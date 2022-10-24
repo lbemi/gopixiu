@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/caoyingjunz/gopixiu/api/server/router/host"
 	"net/http"
 	"os"
 	"os/signal"
@@ -84,6 +85,7 @@ func InitRouters(opt *options.Options) {
 	cicd.NewRouter(opt.GinEngine)  // 注册 cicd 路由
 	role.NewRouter(opt.GinEngine)  // 注册 role 路由
 	menu.NewRouter(opt.GinEngine)  // 注册 menu 路由
+	host.NewRouter(opt.GinEngine)  // 注册 host 路由
 }
 
 func Run(opt *options.Options) error {

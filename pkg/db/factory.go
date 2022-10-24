@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/caoyingjunz/gopixiu/pkg/db/cloud"
+	"github.com/caoyingjunz/gopixiu/pkg/db/host"
 	"github.com/caoyingjunz/gopixiu/pkg/db/user"
 )
 
@@ -30,6 +31,7 @@ type ShareDaoFactory interface {
 	Role() user.RoleInterface
 	Menu() user.MenuInterface
 	Authentication() user.AuthenticationInterface
+	Machine() host.MachineInterface
 }
 
 type shareDaoFactory struct {
@@ -54,6 +56,10 @@ func (f *shareDaoFactory) Role() user.RoleInterface {
 
 func (f *shareDaoFactory) Menu() user.MenuInterface {
 	return user.NewMenu(f.db)
+}
+
+func (f *shareDaoFactory) Machine() host.MachineInterface {
+	return host.NewMachine(f.db)
 }
 
 // TODO： 优化
