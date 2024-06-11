@@ -45,6 +45,7 @@ func (t *planRouter) listTasks(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
+	t.c.Plan().GetTaskResults()
 	if r.Result, err = t.c.Plan().ListTasks(c, opt.PlanId); err != nil {
 		httputils.SetFailed(c, r, err)
 		return

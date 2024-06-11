@@ -18,6 +18,9 @@ package plan
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -61,6 +64,7 @@ type Interface interface {
 
 	RunTask(ctx context.Context, planId int64, taskId int64) error
 	ListTasks(ctx context.Context, planId int64) ([]types.PlanTask, error)
+	GetTaskResults()
 }
 
 var taskQueue workqueue.RateLimitingInterface
@@ -70,8 +74,24 @@ func init() {
 }
 
 type plan struct {
-	cc      config.Config
-	factory db.ShareDaoFactory
+	cc        config.Config
+	factory   db.ShareDaoFactory
+	mutex     sync.Mutex
+	taskQueue chan Handler
+	resultCh  chan TaskResult
+}
+type TaskResult struct {
+	PlanId   int64
+	Name     string
+	Start_At time.Duration
+	End_At   time.Duration
+	Err      error
+}
+
+func newTaskResult() *TaskResult {
+	return &TaskResult{
+		Start_At: time.Now().UTC().Sub(time.Unix(0, 0)),
+	}
 }
 
 // Create
@@ -198,5 +218,16 @@ func NewPlan(cfg config.Config, f db.ShareDaoFactory) *plan {
 	return &plan{
 		cc:      cfg,
 		factory: f,
+	}
+}
+
+// 等待获取任务结果
+func (p *plan) GetTaskResults() {
+	println("get task results", len(p.resultCh))
+	select {
+	case r := <-p.resultCh:
+		fmt.Println("-----", r)
+	case <-time.After(5 * time.Second):
+		klog.Warningf("get task result timeout")
 	}
 }
