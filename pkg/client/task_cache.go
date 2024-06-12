@@ -17,78 +17,93 @@ limitations under the License.
 package client
 
 import (
-	"github.com/caoyingjunz/pixiu/pkg/db/model"
 	"sync"
+	"time"
+
+	"github.com/caoyingjunz/pixiu/pkg/db/model"
 )
 
 type TaskCache struct {
 	sync.RWMutex
-	items map[int64]PlainInfo
+	items map[int64]*PlanInfo
 }
-type PlainInfo struct {
-	tasks map[string]model.Task
+type PlanInfo struct {
+	Tasks    map[string]*Task
+	Status   model.PlanStep
+	TaskCh   chan *struct{}
+	ErrCh    chan error
+	ResultCh chan Task
+}
+
+type Task struct {
+	Name    string           `json:"name"`
+	PlanId  int64            `json:"plan_id"`
+	Status  model.TaskStatus `json:"Status"`
+	Message string           `json:"message"`
+	StartAt time.Time        `json:"start_at"`
+	EndAt   time.Time        `json:"end_at"`
 }
 
 func NewTaskCache() *TaskCache {
 	return &TaskCache{
-		items: map[int64]PlainInfo{},
+		items: map[int64]*PlanInfo{},
 	}
 }
 
-func (t *TaskCache) GetPlainInfo(plainId int64) (PlainInfo, bool) {
+func (t *TaskCache) GetPlainInfo(planId int64) (*PlanInfo, bool) {
 	t.RLock()
 	defer t.RUnlock()
 
-	plain, ok := t.items[plainId]
+	plain, ok := t.items[planId]
 	return plain, ok
 }
 
-func (t *TaskCache) GetPlainTaskInfo(plainId int64, taskName string) (model.Task, bool) {
+func (t *TaskCache) GetPlainTaskInfo(planId int64, taskName string) (*Task, bool) {
 	t.RLock()
 	defer t.RUnlock()
 
-	status, ok := t.GetPlainInfo(plainId)
+	status, ok := t.GetPlainInfo(planId)
 	if !ok {
-		return model.Task{}, false
+		return &Task{}, false
 	}
 
-	task, ok := status.tasks[taskName]
+	task, ok := status.Tasks[taskName]
 	return task, ok
 }
 
-func (t *TaskCache) SetPlainInfo(plainId int64, p PlainInfo) {
+func (t *TaskCache) SetPlainInfo(planId int64, p *PlanInfo) {
 	t.Lock()
 	defer t.Unlock()
 	if t.items == nil {
-		t.items = map[int64]PlainInfo{}
+		t.items = map[int64]*PlanInfo{}
 	}
-	t.items[plainId] = p
+	t.items[planId] = p
 }
-func (t *TaskCache) SetPlainTaskInfo(plainId int64, taskInfo model.Task) {
+func (t *TaskCache) SetPlainTaskInfo(planId int64, taskInfo *Task) {
 	t.Lock()
 	defer t.Unlock()
 
 	if t.items == nil {
-		t.items = map[int64]PlainInfo{}
+		t.items = map[int64]*PlanInfo{}
 	}
-	plain, ok := t.GetPlainInfo(plainId)
+	plain, ok := t.GetPlainInfo(planId)
 	if !ok {
-		plain = PlainInfo{tasks: map[string]model.Task{}}
+		plain = &PlanInfo{Tasks: map[string]*Task{}}
 	}
-	plain.tasks[taskInfo.Name] = taskInfo
-	t.SetPlainInfo(plainId, plain)
+	plain.Tasks[taskInfo.Name] = taskInfo
+	t.SetPlainInfo(planId, plain)
 }
 
-func (t *TaskCache) Delete(plainId int64) {
+func (t *TaskCache) Delete(planId int64) {
 	t.RLock()
 	defer t.RUnlock()
 
-	delete(t.items, plainId)
+	delete(t.items, planId)
 }
 
 func (t *TaskCache) Clear() {
 	t.RLock()
 	defer t.RUnlock()
 
-	t.items = map[int64]PlainInfo{}
+	t.items = map[int64]*PlanInfo{}
 }

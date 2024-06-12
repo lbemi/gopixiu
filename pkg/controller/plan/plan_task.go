@@ -18,7 +18,7 @@ package plan
 
 import (
 	"context"
-
+	"fmt"
 	"k8s.io/klog/v2"
 
 	"github.com/caoyingjunz/pixiu/pkg/db/model"
@@ -43,6 +43,18 @@ func (p *plan) ListTasks(ctx context.Context, planId int64) ([]types.PlanTask, e
 		tasks = append(tasks, *p.modelTask2Type(&object))
 	}
 
+	planInfo, _ := taskCache.GetPlainInfo(planId)
+	if planInfo == nil {
+		return tasks, nil
+	}
+	for i := 0; i < len(planInfo.TaskCh); i++ {
+		if _, ok := <-planInfo.TaskCh; ok {
+			fmt.Println("----->", planInfo.Status)
+		} else {
+			fmt.Println("----->结束，，，，，，，，，")
+			break
+		}
+	}
 	return tasks, nil
 }
 

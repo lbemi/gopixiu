@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
+	"github.com/caoyingjunz/pixiu/pkg/client"
 	"github.com/caoyingjunz/pixiu/pkg/db/model"
 	"github.com/caoyingjunz/pixiu/pkg/util/errors"
 )
@@ -122,8 +123,29 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 		DeployNode{handlerTask: task},
 		DeployChart{handlerTask: task},
 	}
-	if err = p.syncTasks(handlers...); err != nil {
-		klog.Errorf("failed to sync task: %v", err)
+	// 初始化plan缓存
+	planInfo := &client.PlanInfo{}
+	planInfo.TaskCh = make(chan *struct{}, len(handlers))
+	planInfo.ErrCh = make(chan error)
+	taskCache.SetPlainInfo(planId, planInfo)
+	//初始化plan的task
+	if err = p.createPlanTasksIfNotExist(handlers...); err != nil {
+		klog.Errorf("failed to create plan(%d) tasks: %v", planId, err)
+		return
+	}
+	for i := 0; i < len(handlers); i++ {
+		go p.handleTask(handlers[i])
+		planInfo.TaskCh <- &struct{}{}
+	}
+	close(planInfo.TaskCh)
+
+	//if err = p.syncTasks(handlers...); err != nil {
+	//	klog.Errorf("failed to sync task: %v", err)
+	//}
+	select {
+	case err := <-planInfo.ErrCh:
+		klog.Errorf("执行报错了！！！！: %v", err)
+		return
 	}
 }
 
@@ -132,7 +154,13 @@ func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
 		planId := task.GetPlanId()
 		name := task.Name()
 		step := task.Step()
-
+		// 初始化plan中task的缓存
+		taskCache.SetPlainTaskInfo(planId, &client.Task{
+			Name:    name,
+			PlanId:  planId,
+			Status:  model.UnStartPlanStatus,
+			Message: "",
+		})
 		_, err := p.factory.Plan().GetTaskByName(context.TODO(), planId, name)
 		// 存在则直接返回
 		if err == nil {
@@ -169,6 +197,7 @@ func (p *plan) syncStatus(planId int64) error {
 }
 
 func (p *plan) syncTasks(tasks ...Handler) error {
+
 	// 初始化记录
 	if err := p.createPlanTasksIfNotExist(tasks...); err != nil {
 		return err
@@ -179,6 +208,15 @@ func (p *plan) syncTasks(tasks ...Handler) error {
 		planId := task.GetPlanId()
 		name := task.Name()
 		klog.Infof("starting plan(%d) task(%s)", planId, name)
+		// 更新task状态
+		tasktStatus := &client.Task{
+			Name:    name,
+			PlanId:  planId,
+			Status:  model.RunningPlanStatus,
+			Message: "",
+			StartAt: time.Now(),
+		}
+		taskCache.SetPlainTaskInfo(planId, tasktStatus)
 
 		// TODO: 通过闭包方式优化
 		if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
@@ -215,4 +253,64 @@ func (p *plan) syncTasks(tasks ...Handler) error {
 	}
 
 	return nil
+}
+
+func (p *plan) handleTask(task Handler) {
+
+	// 执行任务并更新状态
+	planId := task.GetPlanId()
+	name := task.Name()
+	klog.Infof("starting plan(%d) task(%s)", planId, name)
+	planInfo, _ := taskCache.GetPlainInfo(planId)
+	<-planInfo.TaskCh
+	// 更新task状态为running
+	taskStatus, _ := taskCache.GetPlainTaskInfo(planId, name)
+	taskStatus.Status = model.RunningPlanStatus
+	//taskCache.SetPlainTaskInfo(planId, taskStatus)
+
+	// TODO: 通过闭包方式优化
+	if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
+		"status": model.RunningPlanStatus, "message": "",
+	}); err != nil {
+		klog.Errorf("failed to update plan(%d) status before run task(%s): %v", planId, name, err)
+		taskStatus.Status = model.FailedPlanStatus
+		taskStatus.Message = err.Error()
+		planInfo.ErrCh <- err
+		return
+	}
+
+	status := model.SuccessPlanStatus
+	step := task.Step()
+	message := ""
+
+	// 执行检查
+	runErr := task.Run()
+	if runErr != nil {
+		status = model.FailedPlanStatus
+		step = model.FailedPlanStep
+		message = runErr.Error()
+		taskStatus.Status = model.FailedPlanStatus
+		taskStatus.Message = message
+		planInfo.ErrCh <- runErr
+		return
+		//taskCache.SetPlainTaskInfo(planId, taskStatus)
+	}
+
+	// 执行完成之后更新状态
+	if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
+		"status": status, "message": message, "step": step,
+	}); err != nil {
+		klog.Errorf("failed to update plan(%d) status after run task(%s): %v", planId, name, err)
+		taskStatus.Status = model.FailedPlanStatus
+		taskStatus.Message = err.Error()
+		planInfo.ErrCh <- err
+		return
+	}
+
+	klog.Infof("completed plan(%d) task(%s)", planId, name)
+	taskStatus.Status = model.SuccessPlanStatus
+	taskStatus.EndAt = time.Now()
+	planInfo.Status = model.CompletedPlanStep
+	//taskCache.SetPlainTaskInfo(planId, taskStatus)
+
 }

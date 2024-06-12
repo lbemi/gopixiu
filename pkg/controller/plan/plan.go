@@ -24,6 +24,7 @@ import (
 
 	"github.com/caoyingjunz/pixiu/api/server/errors"
 	"github.com/caoyingjunz/pixiu/cmd/app/config"
+	"github.com/caoyingjunz/pixiu/pkg/client"
 	"github.com/caoyingjunz/pixiu/pkg/db"
 	"github.com/caoyingjunz/pixiu/pkg/db/model"
 	"github.com/caoyingjunz/pixiu/pkg/types"
@@ -63,10 +64,16 @@ type Interface interface {
 	ListTasks(ctx context.Context, planId int64) ([]types.PlanTask, error)
 }
 
-var taskQueue workqueue.RateLimitingInterface
+var (
+	taskQueue workqueue.RateLimitingInterface
+	taskCache *client.TaskCache
+	taskCh    chan struct{}
+)
 
 func init() {
 	taskQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "tasks")
+	taskCache = client.NewTaskCache()
+	taskCh = make(chan struct{})
 }
 
 type plan struct {
