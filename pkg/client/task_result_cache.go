@@ -31,8 +31,8 @@ type TaskCache struct {
 type TaskResult struct {
 	PlanId  int64
 	Name    string
-	StartAt time.Duration
-	EndAt   time.Duration
+	StartAt time.Time
+	EndAt   time.Time
 	Err     error
 }
 

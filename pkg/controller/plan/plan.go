@@ -18,10 +18,13 @@ package plan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/caoyingjunz/pixiu/pkg/client"
 	"sync"
 	"time"
+
+	"github.com/caoyingjunz/pixiu/pkg/client"
+	"github.com/gin-gonic/gin"
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -65,17 +68,17 @@ type Interface interface {
 
 	RunTask(ctx context.Context, planId int64, taskId int64) error
 	ListTasks(ctx context.Context, planId int64) ([]types.PlanTask, error)
-	GetTaskResults(planId int64)
+	GetTaskResults(planId int64, writer gin.ResponseWriter)
 }
 
 var (
-	taskQueue  workqueue.RateLimitingInterface
-	taskCacahe *client.TaskCache
+	taskQueue workqueue.RateLimitingInterface
+	taskCache *client.TaskCache
 )
 
 func init() {
 	taskQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "tasks")
-	taskCacahe = client.NewTaskCache()
+
 }
 
 type plan struct {
@@ -87,7 +90,7 @@ type plan struct {
 
 func newTaskResult() *client.TaskResult {
 	return &client.TaskResult{
-		StartAt: time.Now().UTC().Sub(time.Unix(0, 0)),
+		StartAt: time.Now(),
 	}
 }
 
@@ -179,6 +182,7 @@ func (p *plan) Start(ctx context.Context, pid int64) error {
 	}
 
 	taskQueue.Add(pid)
+	taskCache = client.NewTaskCache()
 	return nil
 }
 
@@ -219,8 +223,8 @@ func NewPlan(cfg config.Config, f db.ShareDaoFactory) *plan {
 }
 
 // 等待获取任务结果
-func (p *plan) GetTaskResults(planId int64) {
-	resultCh, ok := taskCacahe.Get(planId)
+func (p *plan) GetTaskResults(planId int64, w gin.ResponseWriter) {
+	resultCh, ok := taskCache.Get(planId)
 	if !ok {
 		klog.Warningf("get task result channel failed")
 	}
@@ -233,5 +237,9 @@ func (p *plan) GetTaskResults(planId int64) {
 			break
 		}
 		fmt.Println("get task results", result, len(resultCh))
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			klog.Errorf("failed to encode task result: %v", err)
+			break
+		}
 	}
 }

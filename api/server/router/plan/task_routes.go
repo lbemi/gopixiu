@@ -45,11 +45,15 @@ func (t *planRouter) listTasks(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	t.c.Plan().GetTaskResults(opt.PlanId)
+
 	if r.Result, err = t.c.Plan().ListTasks(c, opt.PlanId); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-
 	httputils.SetSuccess(c, r)
+	w := c.Writer
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	t.c.Plan().GetTaskResults(opt.PlanId, w)
 }

@@ -133,7 +133,7 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 	}
 	close(p.taskQueue)
 	taskCh := make(chan client.TaskResult, len(handlers))
-	taskCacahe.Set(planId, taskCh)
+	taskCache.Set(planId, taskCh)
 	go p.syncTasks()
 }
 
@@ -187,7 +187,7 @@ func (p *plan) syncTasks() {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		resultCh, ok := taskCacahe.Get(task.GetPlanId())
+		resultCh, ok := taskCache.Get(task.GetPlanId())
 		if !ok {
 			//  不存在则创建缓存
 			resultCh = make(chan client.TaskResult, len(p.taskQueue))
@@ -205,7 +205,7 @@ func (p *plan) syncTasks() {
 				"status": model.RunningPlanStatus, "message": "",
 			}); err != nil {
 				taskResult.Err = err
-				taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+				taskResult.EndAt = time.Now()
 				resultCh <- *taskResult
 				errorCh <- err
 				return
@@ -222,14 +222,14 @@ func (p *plan) syncTasks() {
 				step = model.FailedPlanStep
 				message = runErr.Error()
 				taskResult.Err = runErr
-				taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+				taskResult.EndAt = time.Now()
 				resultCh <- *taskResult
-				errorCh <- runErr
 				if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
 					"status": status, "message": message, "step": step,
 				}); err != nil {
 					return
 				}
+				errorCh <- runErr
 				return
 			}
 
@@ -238,18 +238,18 @@ func (p *plan) syncTasks() {
 				"status": status, "message": message, "step": step,
 			}); err != nil {
 				taskResult.Err = err
-				taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+				taskResult.EndAt = time.Now().UTC()
 				resultCh <- *taskResult
 				errorCh <- err
 				return
 			}
 
 			klog.Infof("completed plan(%d) task(%s)", planId, name)
-			taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+			taskResult.EndAt = time.Now().UTC()
 			resultCh <- *taskResult
 			klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
 			defer p.mutex.Unlock()
-			defer taskCacahe.Set(planId, resultCh)
+			defer taskCache.Set(planId, resultCh)
 		}()
 	}
 
