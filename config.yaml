@@ -11,9 +11,15 @@ default:
   log_format: json
 
 # 数据库地址信息
+#mysql:
+#  host: peng
+#  user: root
+#  password: Pixiu868686
+#  port: 3306
+#  name: pixiu
 mysql:
-  host: peng
-  user: root
-  password: Pixiu868686
-  port: 3306
+  host: db-server
+  user: lbemi
+  password: Admin_1234
+  port: 3333
   name: pixiu

@@ -19,6 +19,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"github.com/caoyingjunz/pixiu/pkg/client"
 	"sync"
 	"time"
 
@@ -64,13 +65,17 @@ type Interface interface {
 
 	RunTask(ctx context.Context, planId int64, taskId int64) error
 	ListTasks(ctx context.Context, planId int64) ([]types.PlanTask, error)
-	GetTaskResults()
+	GetTaskResults(planId int64)
 }
 
-var taskQueue workqueue.RateLimitingInterface
+var (
+	taskQueue  workqueue.RateLimitingInterface
+	taskCacahe *client.TaskCache
+)
 
 func init() {
 	taskQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "tasks")
+	taskCacahe = client.NewTaskCache()
 }
 
 type plan struct {
@@ -78,19 +83,11 @@ type plan struct {
 	factory   db.ShareDaoFactory
 	mutex     sync.Mutex
 	taskQueue chan Handler
-	resultCh  chan TaskResult
-}
-type TaskResult struct {
-	PlanId   int64
-	Name     string
-	Start_At time.Duration
-	End_At   time.Duration
-	Err      error
 }
 
-func newTaskResult() *TaskResult {
-	return &TaskResult{
-		Start_At: time.Now().UTC().Sub(time.Unix(0, 0)),
+func newTaskResult() *client.TaskResult {
+	return &client.TaskResult{
+		StartAt: time.Now().UTC().Sub(time.Unix(0, 0)),
 	}
 }
 
@@ -222,12 +219,19 @@ func NewPlan(cfg config.Config, f db.ShareDaoFactory) *plan {
 }
 
 // 等待获取任务结果
-func (p *plan) GetTaskResults() {
-	println("get task results", len(p.resultCh))
-	select {
-	case r := <-p.resultCh:
-		fmt.Println("-----", r)
-	case <-time.After(5 * time.Second):
-		klog.Warningf("get task result timeout")
+func (p *plan) GetTaskResults(planId int64) {
+	resultCh, ok := taskCacahe.Get(planId)
+	if !ok {
+		klog.Warningf("get task result channel failed")
+	}
+	fmt.Println("get task results", len(resultCh))
+	//持续获取任务结果,知道任务完成
+	for {
+		result, ok := <-resultCh
+		if !ok {
+			fmt.Println("get task results", len(resultCh))
+			break
+		}
+		fmt.Println("get task results", result, len(resultCh))
 	}
 }

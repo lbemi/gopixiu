@@ -18,6 +18,7 @@ package plan
 
 import (
 	"context"
+	"github.com/caoyingjunz/pixiu/pkg/client"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -121,41 +122,50 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 		DeployNode{handlerTask: task},
 		DeployChart{handlerTask: task},
 	}
-	p.taskQueue = make(chan Handler, len(handlers)) // 将taskQueue的容量设置为handlers的长度
+	err = p.createPlanTasksIfNotExist(handlers...)
+	if err != nil {
+		klog.Errorf("failed to create plan(%d) tasks: %v", planId, err)
+		return
+	}
+	p.taskQueue = make(chan Handler, len(handlers))
 	for _, handler := range handlers {
 		p.taskQueue <- handler
 	}
 	close(p.taskQueue)
+	taskCh := make(chan client.TaskResult, len(handlers))
+	taskCacahe.Set(planId, taskCh)
 	go p.syncTasks()
 }
 
-func (p *plan) createPlanTasksIfNotExist(task Handler) error {
-	planId := task.GetPlanId()
-	name := task.Name()
-	step := task.Step()
+func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
+	for _, task := range tasks {
+		planId := task.GetPlanId()
+		name := task.Name()
+		step := task.Step()
 
-	_, err := p.factory.Plan().GetTaskByName(context.TODO(), planId, name)
-	// 存在则直接返回
-	if err == nil {
-		return nil
-	}
-	if err != nil {
-		// 非不存在报错则报异常
-		if !errors.IsRecordNotFound(err) {
-			klog.Infof("failed to get plan(%d) tasks(%s) for first created: %v", planId, name, err)
+		_, err := p.factory.Plan().GetTaskByName(context.TODO(), planId, name)
+		// 存在则直接返回
+		if err == nil {
+			return nil
+		}
+		if err != nil {
+			// 非不存在报错则报异常
+			if !errors.IsRecordNotFound(err) {
+				klog.Infof("failed to get plan(%d) tasks(%s) for first created: %v", planId, name, err)
+				return err
+			}
+		}
+
+		// 不存在记录则新建
+		if _, err = p.factory.Plan().CreatTask(context.TODO(), &model.Task{
+			Name:   name,
+			PlanId: planId,
+			Step:   step,
+			Status: model.UnStartPlanStatus,
+		}); err != nil {
+			klog.Errorf("failed to init plan(%d) task(%s): %v", planId, name, err)
 			return err
 		}
-	}
-
-	// 不存在记录则新建
-	if _, err = p.factory.Plan().CreatTask(context.TODO(), &model.Task{
-		Name:   name,
-		PlanId: planId,
-		Step:   step,
-		Status: model.UnStartPlanStatus,
-	}); err != nil {
-		klog.Errorf("failed to init plan(%d) task(%s): %v", planId, name, err)
-		return err
 	}
 
 	return nil
@@ -168,11 +178,8 @@ func (p *plan) syncStatus(planId int64) error {
 	return nil
 }
 
-type TaskResultChan chan TaskResult
-
 func (p *plan) syncTasks() {
-	p.resultCh = make(TaskResultChan, len(p.taskQueue))
-	errorCh := make(chan error, 1)
+	errorCh := make(chan error)
 	for i := 0; i < len(p.taskQueue); i++ {
 		p.mutex.Lock()
 		task, ok := <-p.taskQueue
@@ -180,14 +187,14 @@ func (p *plan) syncTasks() {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+		resultCh, ok := taskCacahe.Get(task.GetPlanId())
+		if !ok {
+			//  不存在则创建缓存
+			resultCh = make(chan client.TaskResult, len(p.taskQueue))
+		}
+
 		go func() {
 			taskResult := newTaskResult()
-			err := p.createPlanTasksIfNotExist(task)
-			if err != nil {
-				p.resultCh <- TaskResult{Err: err}
-				errorCh <- err
-				return
-			}
 			planId := task.GetPlanId()
 			name := task.Name()
 			taskResult.PlanId = planId
@@ -198,8 +205,8 @@ func (p *plan) syncTasks() {
 				"status": model.RunningPlanStatus, "message": "",
 			}); err != nil {
 				taskResult.Err = err
-				taskResult.End_At = time.Now().UTC().Sub(time.Unix(0, 0))
-				p.resultCh <- *taskResult
+				taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+				resultCh <- *taskResult
 				errorCh <- err
 				return
 			}
@@ -214,9 +221,9 @@ func (p *plan) syncTasks() {
 				status = model.FailedPlanStatus
 				step = model.FailedPlanStep
 				message = runErr.Error()
-				taskResult.Err = err
-				taskResult.End_At = time.Now().UTC().Sub(time.Unix(0, 0))
-				p.resultCh <- *taskResult
+				taskResult.Err = runErr
+				taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+				resultCh <- *taskResult
 				errorCh <- runErr
 				if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
 					"status": status, "message": message, "step": step,
@@ -231,17 +238,18 @@ func (p *plan) syncTasks() {
 				"status": status, "message": message, "step": step,
 			}); err != nil {
 				taskResult.Err = err
-				taskResult.End_At = time.Now().UTC().Sub(time.Unix(0, 0))
-				p.resultCh <- *taskResult
+				taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+				resultCh <- *taskResult
 				errorCh <- err
 				return
 			}
 
 			klog.Infof("completed plan(%d) task(%s)", planId, name)
-			taskResult.End_At = time.Now().UTC().Sub(time.Unix(0, 0))
-			p.resultCh <- *taskResult
-			klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(p.resultCh))
+			taskResult.EndAt = time.Now().UTC().Sub(time.Unix(0, 0))
+			resultCh <- *taskResult
+			klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
 			defer p.mutex.Unlock()
+			defer taskCacahe.Set(planId, resultCh)
 		}()
 	}
 
@@ -249,7 +257,6 @@ func (p *plan) syncTasks() {
 	case err := <-errorCh:
 		klog.Errorf("-------task error: %v", err.Error())
 		close(errorCh)
-		close(p.resultCh)
 	default:
 	}
 
