@@ -19,52 +19,92 @@ package client
 import (
 	"sync"
 	"time"
+
+	"github.com/caoyingjunz/pixiu/pkg/db/model"
 )
 
 // TaskCache
 // TODO: 临时实现，后续优化
 type TaskCache struct {
 	sync.RWMutex
-	items map[int64]chan TaskResult
+	items      map[int64]chan TaskResult        // 存储每个任务的通道
+	taskResult map[int64]map[string]*TaskResult // 存储每个任务的结果
 }
 
 type TaskResult struct {
-	PlanId  int64
-	Name    string
-	StartAt time.Time
-	EndAt   time.Time
-	Err     error
+	PlanId  int64            `json:"plan_id"`
+	Name    string           `json:"name"`
+	StartAt time.Time        `json:"start_at"`
+	EndAt   time.Time        `json:"end_at"`
+	Status  model.TaskStatus `json:"status"`
+	Step    model.PlanStep   `json:"step"`
+	Message string           `json:"message"`
 }
 
 func NewTaskCache() *TaskCache {
 	return &TaskCache{
-		items: map[int64]chan TaskResult{},
+		items:      map[int64]chan TaskResult{},
+		taskResult: map[int64]map[string]*TaskResult{},
 	}
 }
 
-func (s *TaskCache) Get(planId int64) (chan TaskResult, bool) {
+func (s *TaskCache) GetCh(planId int64) (chan TaskResult, bool) {
 	s.RLock()
 	defer s.RUnlock()
 
 	t, ok := s.items[planId]
 	return t, ok
 }
+func (s *TaskCache) GetResult(planId int64) (map[string]*TaskResult, bool) {
+	s.RLock()
+	defer s.RUnlock()
 
-func (s *TaskCache) Set(planId int64, result chan TaskResult) {
+	t, ok := s.taskResult[planId]
+	return t, ok
+}
+func (s *TaskCache) GetTaskResult(planId int64, taskName string) (*TaskResult, bool) {
+	s.RLock()
+	defer s.RUnlock()
+
+	t, ok := s.taskResult[planId][taskName]
+	return t, ok
+}
+func (s *TaskCache) SetCh(planId int64, result chan TaskResult) {
 	s.RLock()
 	defer s.RUnlock()
 
 	if s.items == nil {
 		s.items = map[int64]chan TaskResult{}
 	}
+	if s.taskResult[planId] == nil {
+		//	初始化plan的taskResult
+		s.taskResult[planId] = map[string]*TaskResult{}
+	}
 	s.items[planId] = result
 }
 
-func (s *TaskCache) Delete(planId int64) {
+func (s *TaskCache) SetTaskResult(planId int64, result *TaskResult) {
+	s.RLock()
+	defer s.RUnlock()
+	// 如果channel没有启动，直接返回,不做操作
+	if s.items == nil {
+		return
+	}
+	// 如果没有plan的taskResult，初始化
+	if s.taskResult[planId] == nil {
+		//	初始化plan的taskResult
+		s.taskResult[planId] = map[string]*TaskResult{}
+	}
+	s.taskResult[planId][result.Name] = result
+}
+
+func (s *TaskCache) DeleteCh(planId int64) {
 	s.RLock()
 	defer s.RUnlock()
 
 	delete(s.items, planId)
+	//同步清空plan缓存
+	delete(s.taskResult, planId)
 }
 
 func (s *TaskCache) Clear() {
@@ -72,4 +112,11 @@ func (s *TaskCache) Clear() {
 	defer s.RUnlock()
 
 	s.items = map[int64]chan TaskResult{}
+	s.taskResult = map[int64]map[string]*TaskResult{}
+}
+
+func (s *TaskCache) CloseCh(planId int64) {
+	s.RLock()
+	defer s.RUnlock()
+	close(s.items[planId])
 }

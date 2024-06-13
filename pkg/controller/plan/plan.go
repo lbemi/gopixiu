@@ -21,16 +21,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/caoyingjunz/pixiu/pkg/client"
 	"github.com/gin-gonic/gin"
-
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"github.com/caoyingjunz/pixiu/api/server/errors"
 	"github.com/caoyingjunz/pixiu/cmd/app/config"
+	"github.com/caoyingjunz/pixiu/pkg/client"
 	"github.com/caoyingjunz/pixiu/pkg/db"
 	"github.com/caoyingjunz/pixiu/pkg/db/model"
 	"github.com/caoyingjunz/pixiu/pkg/types"
@@ -78,7 +76,7 @@ var (
 
 func init() {
 	taskQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "tasks")
-
+	taskCache = client.NewTaskCache()
 }
 
 type plan struct {
@@ -86,12 +84,6 @@ type plan struct {
 	factory   db.ShareDaoFactory
 	mutex     sync.Mutex
 	taskQueue chan Handler
-}
-
-func newTaskResult() *client.TaskResult {
-	return &client.TaskResult{
-		StartAt: time.Now(),
-	}
 }
 
 // Create
@@ -182,7 +174,7 @@ func (p *plan) Start(ctx context.Context, pid int64) error {
 	}
 
 	taskQueue.Add(pid)
-	taskCache = client.NewTaskCache()
+
 	return nil
 }
 
@@ -224,22 +216,33 @@ func NewPlan(cfg config.Config, f db.ShareDaoFactory) *plan {
 
 // 等待获取任务结果
 func (p *plan) GetTaskResults(planId int64, w gin.ResponseWriter) {
-	resultCh, ok := taskCache.Get(planId)
-	if !ok {
+	resultCh, ok := taskCache.GetCh(planId)
+	if !ok || resultCh == nil {
 		klog.Warningf("get task result channel failed")
+		return
 	}
-	fmt.Println("get task results", len(resultCh))
+
+	taskResult, ok := taskCache.GetResult(planId)
+	if !ok || taskResult == nil {
+		klog.Warningf("get task result failed")
+		return
+	}
 	//持续获取任务结果,知道任务完成
 	for {
-		result, ok := <-resultCh
-		if !ok {
-			fmt.Println("get task results", len(resultCh))
-			break
+		var results []client.TaskResult
+		for _, t := range taskResult {
+			results = append(results, *t)
 		}
-		fmt.Println("get task results", result, len(resultCh))
-		if err := json.NewEncoder(w).Encode(result); err != nil {
+
+		if err := json.NewEncoder(w).Encode(results); err != nil {
 			klog.Errorf("failed to encode task result: %v", err)
 			break
 		}
+		result, ok := <-resultCh
+		if !ok {
+			fmt.Println("get task results closed", len(resultCh))
+			break
+		}
+		fmt.Println("get task results", result, len(resultCh))
 	}
 }

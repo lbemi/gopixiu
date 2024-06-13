@@ -18,12 +18,13 @@ package plan
 
 import (
 	"context"
-	"github.com/caoyingjunz/pixiu/pkg/client"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
+	"github.com/caoyingjunz/pixiu/pkg/client"
 	"github.com/caoyingjunz/pixiu/pkg/db/model"
 	"github.com/caoyingjunz/pixiu/pkg/util/errors"
 )
@@ -133,8 +134,8 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 	}
 	close(p.taskQueue)
 	taskCh := make(chan client.TaskResult, len(handlers))
-	taskCache.Set(planId, taskCh)
-	go p.syncTasks()
+	taskCache.SetCh(planId, taskCh)
+	go p.syncTasks(planId)
 }
 
 func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
@@ -142,6 +143,17 @@ func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
 		planId := task.GetPlanId()
 		name := task.Name()
 		step := task.Step()
+		taskResult := &client.TaskResult{
+			PlanId:  planId,
+			Name:    name,
+			StartAt: time.Now(),
+			EndAt:   time.Now(),
+			Status:  model.UnStartPlanStatus,
+			Step:    task.Step(),
+			Message: "",
+		}
+		//初始化缓存
+		taskCache.SetTaskResult(planId, taskResult)
 
 		_, err := p.factory.Plan().GetTaskByName(context.TODO(), planId, name)
 		// 存在则直接返回
@@ -175,10 +187,24 @@ func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
 // 任务启动时设置为运行中，结束时同步为结束状态(成功或者失败)
 // TODO: 后续优化
 func (p *plan) syncStatus(planId int64) error {
+	taskResults, ok := taskCache.GetResult(planId)
+	if !ok {
+		return nil
+	}
+	//批量同步缓存到数据库
+	for index, taskResult := range taskResults {
+		fmt.Println("步骤", index, " : ", taskResult.Name, " : ", *taskResult)
+		// if err := p.factory.Plan().UpdateTask(context.TODO(), planId, taskResult.Name, map[string]interface{}{
+		// 	"status": taskResult.Status, "message": taskResult.Err.Error(),
+		// }); err != nil {
+		// 	return err
+		// }
+		// time.Sleep(100 * time.Millisecond)
+	}
 	return nil
 }
 
-func (p *plan) syncTasks() {
+func (p *plan) syncTasks(planId int64) {
 	errorCh := make(chan error)
 	for i := 0; i < len(p.taskQueue); i++ {
 		p.mutex.Lock()
@@ -187,140 +213,74 @@ func (p *plan) syncTasks() {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		resultCh, ok := taskCache.Get(task.GetPlanId())
+		resultCh, ok := taskCache.GetCh(task.GetPlanId())
 		if !ok {
-			//  不存在则创建缓存
 			resultCh = make(chan client.TaskResult, len(p.taskQueue))
 		}
-
-		go func() {
-			taskResult := newTaskResult()
-			planId := task.GetPlanId()
-			name := task.Name()
-			taskResult.PlanId = planId
-			taskResult.Name = task.Name()
-			klog.Infof("starting plan(%d) task(%s)", planId, name)
-			// TODO: 通过闭包方式优化
-			if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
-				"status": model.RunningPlanStatus, "message": "",
-			}); err != nil {
-				taskResult.Err = err
-				taskResult.EndAt = time.Now()
-				resultCh <- *taskResult
-				errorCh <- err
-				return
-			}
-
-			status := model.SuccessPlanStatus
-			step := task.Step()
-			message := ""
-
-			// 执行检查
-			runErr := task.Run()
-			if runErr != nil {
-				status = model.FailedPlanStatus
-				step = model.FailedPlanStep
-				message = runErr.Error()
-				taskResult.Err = runErr
-				taskResult.EndAt = time.Now()
-				resultCh <- *taskResult
-				if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
-					"status": status, "message": message, "step": step,
-				}); err != nil {
-					return
-				}
-				errorCh <- runErr
-				return
-			}
-
-			// 执行完成之后更新状态
-			if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
-				"status": status, "message": message, "step": step,
-			}); err != nil {
-				taskResult.Err = err
-				taskResult.EndAt = time.Now().UTC()
-				resultCh <- *taskResult
-				errorCh <- err
-				return
-			}
-
-			klog.Infof("completed plan(%d) task(%s)", planId, name)
-			taskResult.EndAt = time.Now().UTC()
-			resultCh <- *taskResult
-			klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
-			defer p.mutex.Unlock()
-			defer taskCache.Set(planId, resultCh)
-		}()
+		go p.handlerTask(task, errorCh, resultCh)
 	}
 
-	select {
-	case err := <-errorCh:
-		klog.Errorf("-------task error: %v", err.Error())
+	for err := range errorCh {
+		klog.Errorf("任务运行失败: %v", err.Error())
 		close(errorCh)
-	default:
+		taskCache.CloseCh(planId)
+		err = p.syncStatus(planId)
+		if err != nil {
+			klog.Errorf("failed to sync plan(%d) task status: %v", planId, err)
+			return
+		}
 	}
 
-	//// 初始化记录
-	//if err := p.createPlanTasksIfNotExist(p.taskQueue...); err != nil {
-	//	p.resultCh <- TaskResult{Err: err}
-	//	close(p.resultCh)
-	//}
-	//
-	//var wg sync.WaitGroup
+}
 
-	// 确保task的执行顺序
+func (p *plan) handlerTask(task Handler, errorCh chan error, resultCh chan client.TaskResult) {
+	defer p.mutex.Unlock()
+	planId := task.GetPlanId()
+	name := task.Name()
 
-	//var runTask func(Handler) = func(task Handler) {
-	//	planId := task.GetPlanId()
-	//	name := task.Name()
-	//	klog.Infof("starting plan(%d) task(%s)", planId, name)
-	//
-	//	// TODO: 通过闭包方式优化
-	//	if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
-	//		"status": model.RunningPlanStatus, "message": "",
-	//	}); err != nil {
-	//		p.mutex.Lock()
-	//		resultCh <- TaskResult{PlanId: planId, TaskId: 0, Err: err}
-	//		p.mutex.Unlock()
-	//		return
-	//	}
-	//
-	//	status := model.SuccessPlanStatus
-	//	step := task.Step()
-	//	message := ""
-	//
-	//	// 执行检查
-	//	runErr := task.Run()
-	//	if runErr != nil {
-	//		status = model.FailedPlanStatus
-	//		step = model.FailedPlanStep
-	//		message = runErr.Error()
-	//		// 如果某个task执行失败，则整个task结束
-	//	}
-	//
-	//	// 执行完成之后更新状态
-	//	if err := p.factory.Plan().UpdateTask(context.TODO(), planId, name, map[string]interface{}{
-	//		"status": status, "message": message, "step": step,
-	//	}); err != nil {
-	//		p.mutex.Lock()
-	//		resultCh <- TaskResult{PlanId: planId, TaskId: 0, Err: err}
-	//		p.mutex.Unlock()
-	//		return
-	//	}
-	//
-	//	klog.Infof("completed plan(%d) task(%s)", planId, name)
-	//	p.mutex.Lock()
-	//	resultCh <- TaskResult{PlanId: planId, TaskId: 0, Err: runErr}
-	//	p.mutex.Unlock()
-	//}
+	// 获取当前任务缓存信息
+	taskResult, ok := taskCache.GetTaskResult(planId, name)
+	if !ok {
+		// 不存在则新建
+		taskResult = &client.TaskResult{
+			PlanId:  planId,
+			Name:    name,
+			StartAt: time.Now(),
+			EndAt:   time.Now(),
+			Status:  model.UnStartPlanStatus,
+			Message: "",
+		}
+		//初始化缓存
+		taskCache.SetTaskResult(planId, taskResult)
+	}
 
-	//for _, task := range tasks {
-	//	wg.Add(1)
-	//	go runTask(task)
-	//}
-	//
-	//go func() {
-	//	wg.Wait()
-	//	close(resultCh)
-	//}()
+	// 设置启动任务时间
+	taskResult.StartAt = time.Now()
+	taskResult.Status = model.RunningPlanStatus
+	klog.Infof("starting plan(%d) task(%s)", planId, name)
+
+	step := task.Step()
+	runErr := task.Run()
+	if runErr != nil {
+		step = model.FailedPlanStep
+		taskResult.Message = runErr.Error()
+		taskResult.EndAt = time.Now()
+		taskResult.Status = model.FailedPlanStatus
+		taskResult.Step = step
+		resultCh <- *taskResult
+		errorCh <- runErr
+		return
+	}
+
+	taskResult.EndAt = time.Now()
+	taskResult.Status = model.SuccessPlanStatus
+	taskResult.Step = step
+	resultCh <- *taskResult
+	klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
+
+	defer func() {
+		//todo 用指针了,是不是就不需要再去保存了?
+		taskCache.SetCh(planId, resultCh)
+		taskCache.SetTaskResult(planId, taskResult)
+	}()
 }
