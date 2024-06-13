@@ -21,7 +21,7 @@ testbin/*
 .vscode
 *.swp
 *.swo
-
+.DS_Store
 # output
 dist
 

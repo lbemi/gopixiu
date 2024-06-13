@@ -128,6 +128,21 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 		klog.Errorf("failed to create plan(%d) tasks: %v", planId, err)
 		return
 	}
+
+	for _, handler := range handlers {
+		taskResult := &client.TaskResult{
+			PlanId:  planId,
+			Name:    handler.Name(),
+			StartAt: time.Now(),
+			EndAt:   time.Now(),
+			Status:  model.UnStartPlanStatus,
+			Step:    task.Step(),
+			Message: "",
+		}
+		//初始化缓存
+		fmt.Printf("创建%s 缓存\n", handler.Name())
+		taskCache.SetTaskResult(planId, taskResult)
+	}
 	p.taskQueue = make(chan Handler, len(handlers))
 	for _, handler := range handlers {
 		p.taskQueue <- handler
@@ -143,17 +158,6 @@ func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
 		planId := task.GetPlanId()
 		name := task.Name()
 		step := task.Step()
-		taskResult := &client.TaskResult{
-			PlanId:  planId,
-			Name:    name,
-			StartAt: time.Now(),
-			EndAt:   time.Now(),
-			Status:  model.UnStartPlanStatus,
-			Step:    task.Step(),
-			Message: "",
-		}
-		//初始化缓存
-		taskCache.SetTaskResult(planId, taskResult)
 
 		_, err := p.factory.Plan().GetTaskByName(context.TODO(), planId, name)
 		// 存在则直接返回
@@ -193,7 +197,7 @@ func (p *plan) syncStatus(planId int64) error {
 	}
 	//批量同步缓存到数据库
 	for index, taskResult := range taskResults {
-		fmt.Println("步骤", index, " : ", taskResult.Name, " : ", *taskResult)
+		fmt.Println("步骤", index, " : ", *taskResult)
 		// if err := p.factory.Plan().UpdateTask(context.TODO(), planId, taskResult.Name, map[string]interface{}{
 		// 	"status": taskResult.Status, "message": taskResult.Err.Error(),
 		// }); err != nil {

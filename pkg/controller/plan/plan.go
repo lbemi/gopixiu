@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -234,10 +235,12 @@ func (p *plan) GetTaskResults(planId int64, w gin.ResponseWriter) {
 			results = append(results, *t)
 		}
 
+		flusher, _ := w.(http.Flusher)
 		if err := json.NewEncoder(w).Encode(results); err != nil {
 			klog.Errorf("failed to encode task result: %v", err)
 			break
 		}
+		flusher.Flush()
 		result, ok := <-resultCh
 		if !ok {
 			fmt.Println("get task results closed", len(resultCh))
