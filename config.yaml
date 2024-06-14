@@ -18,17 +18,22 @@ default:
 #  port: 3306
 #  name: pixiu
 mysql:
-  host: peng
-  user: root
-  password: Pixiu868686
-  port: 3306
+  host: db-server
+  user: lbemi
+  password: Admin_1234
+  port: 3333
   name: pixiu
 
 worker:
+  work_dir: /tmp/pixiu
   engines:
-    - version: v2
-      image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v2.0.1
-    - version: v3
-      image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v3.0.1
-    - version: offline
-      image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v2.0.1-offline
+    - image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v2.0.1
+      os_supported:
+        - centos7
+        - debian10
+        - ubuntu18.04
+    - image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v3.0.1
+      os_supported:
+        - debian11
+        - ubuntu20.04
+        - ubuntu22.04

@@ -85,6 +85,7 @@ type plan struct {
 	factory   db.ShareDaoFactory
 	mutex     sync.Mutex
 	taskQueue chan Handler
+	errorCh   chan error
 }
 
 // Create
@@ -160,7 +161,37 @@ func (p *plan) List(ctx context.Context) ([]types.Plan, error) {
 	return ps, nil
 }
 
-func (p *plan) Start(ctx context.Context, pid int64) error {
+// 启动前校验
+// 1. 配置
+// 2. 节点
+// 3. 校验runner
+// 3. 运行任务
+func (p *plan) preStart(ctx context.Context, pid int64) error {
+	// 1. 校验配置
+	cfg, err := p.GetConfig(ctx, pid)
+	if err != nil {
+		return fmt.Errorf("failed to get plan(%d) config %v", pid, err)
+	}
+	fmt.Printf("-----%v---", cfg)
+	// TODO: 根据具体情况对参数
+
+	// 2. 校验节点
+	nodes, err := p.ListNodes(ctx, pid)
+	if err != nil {
+		return fmt.Errorf("failed to get plan(%d) nodes %v", pid, err)
+	}
+	if len(nodes) == 0 {
+		return fmt.Errorf("部署计划暂无关联节点")
+	}
+
+	// 3. 校验runner
+	runner, err := p.GetRunner(cfg.OSImage)
+	if err != nil {
+		return err
+	}
+	klog.Infof("plan(%d) runner is %s", pid, runner)
+
+	// 4. 校验运行任务
 	tasks, err := p.factory.Plan().ListTasks(ctx, pid)
 	if err != nil {
 		klog.Errorf("failed to get tasks of plan %d: %v", pid, err)
@@ -174,8 +205,16 @@ func (p *plan) Start(ctx context.Context, pid int64) error {
 		}
 	}
 
-	taskQueue.Add(pid)
+	return nil
+}
 
+func (p *plan) Start(ctx context.Context, pid int64) error {
+	// 启动前校验
+	if err := p.preStart(ctx, pid); err != nil {
+		return err
+	}
+
+	taskQueue.Add(pid)
 	return nil
 }
 

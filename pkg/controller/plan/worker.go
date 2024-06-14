@@ -19,6 +19,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -113,13 +114,20 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 		klog.Errorf("failed to get task data: %v", err)
 		return
 	}
+	runner, err := p.GetRunner(taskData.Config.OSImage)
+	if err != nil {
+		klog.Errorf("failed to get image(%s) for worker: %v", taskData.Config.OSImage, err)
+		return
+	}
+	// Runner的工作目录
+	dir := p.WorkDir()
 
 	task := newHandlerTask(taskData)
 	handlers := []Handler{
 		Check{handlerTask: task},
-		Render{handlerTask: task},
-		BootStrap{handlerTask: task},
-		Deploy{handlerTask: task},
+		Render{handlerTask: task, dir: dir},
+		BootStrap{handlerTask: task, dir: dir, runner: runner},
+		Deploy{handlerTask: task, dir: dir, runner: runner},
 		DeployNode{handlerTask: task},
 		DeployChart{handlerTask: task},
 	}
@@ -143,14 +151,19 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 		fmt.Printf("创建%s 缓存\n", handler.Name())
 		taskCache.SetTaskResult(planId, taskResult)
 	}
-	p.taskQueue = make(chan Handler, len(handlers))
-	for _, handler := range handlers {
-		p.taskQueue <- handler
-	}
-	close(p.taskQueue)
+	p.errorCh = make(chan error)
+	p.taskQueue = make(chan Handler)
+	go func() {
+		for _, handler := range handlers {
+			p.taskQueue <- handler
+		}
+		close(p.taskQueue)
+	}()
 	taskCh := make(chan client.TaskResult, len(handlers))
 	taskCache.SetCh(planId, taskCh)
-	go p.syncTasks(planId)
+
+	p.syncTasks(planId)
+
 }
 
 func (p *plan) createPlanTasksIfNotExist(tasks ...Handler) error {
@@ -191,14 +204,16 @@ func (p *plan) WorkDir() string {
 	return p.cc.Worker.WorkDir
 }
 
-func (p *plan) getImageForWorker(v string) (string, error) {
+func (p *plan) GetRunner(osImage string) (string, error) {
 	engines := p.cc.Worker.Engines
 	for _, engine := range engines {
-		if engine.Version == v {
-			return engine.Image, nil
+		for _, os := range engine.OSSupported {
+			if os == osImage {
+				return engine.Image, nil
+			}
 		}
 	}
-	return "", fmt.Errorf("version(%s) worker image not found", v)
+	return "", fmt.Errorf("osImage(%s) runner not found", osImage)
 }
 
 // 同步任务状态
@@ -212,47 +227,63 @@ func (p *plan) syncStatus(planId int64) error {
 	//批量同步缓存到数据库
 	for index, taskResult := range taskResults {
 		fmt.Println("步骤", index, " : ", *taskResult)
-		// if err := p.factory.Plan().UpdateTask(context.TODO(), planId, taskResult.Name, map[string]interface{}{
-		// 	"status": taskResult.Status, "message": taskResult.Err.Error(),
-		// }); err != nil {
-		// 	return err
-		// }
-		// time.Sleep(100 * time.Millisecond)
+		//if err := p.factory.Plan().UpdateTask(context.TODO(), planId, taskResult.Name, map[string]interface{}{
+		//	"status": taskResult.Status, "message": taskResult.Message,
+		//}); err != nil {
+		//	return err
+		//}
+		//time.Sleep(100 * time.Millisecond)
 	}
 	return nil
 }
 
 func (p *plan) syncTasks(planId int64) {
-	errorCh := make(chan error)
-	for i := 0; i < len(p.taskQueue); i++ {
-		p.mutex.Lock()
-		task, ok := <-p.taskQueue
-		if !ok {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		resultCh, ok := taskCache.GetCh(task.GetPlanId())
-		if !ok {
-			resultCh = make(chan client.TaskResult, len(p.taskQueue))
-		}
-		go p.handlerTask(task, errorCh, resultCh)
-	}
-
-	for err := range errorCh {
-		klog.Errorf("任务运行失败: %v", err.Error())
-		close(errorCh)
-		taskCache.CloseCh(planId)
-		err = p.syncStatus(planId)
-		if err != nil {
-			klog.Errorf("failed to sync plan(%d) task status: %v", planId, err)
+	exitLoop := false
+	var wg sync.WaitGroup
+	errorCh := make(chan struct{})
+	for !exitLoop {
+		fmt.Println("循环中。。。。。")
+		select {
+		case task, ok := <-p.taskQueue:
+			if !ok {
+				p.syncStatus(planId)
+				//exitLoop = true
+				return
+			}
+			wg.Add(1)
+			resultCh, ok := taskCache.GetCh(task.GetPlanId())
+			if !ok {
+				resultCh = make(chan client.TaskResult, len(p.taskQueue))
+			}
+			p.handlerTask(task, resultCh, errorCh, &wg)
+			wg.Wait()
+		case <-errorCh:
+			fmt.Printf("errorChn 任务运行失败:")
+			taskCache.CloseCh(planId)
+			err := p.syncStatus(planId)
+			if err != nil {
+				klog.Errorf("failed to sync plan(%d) task status: %v", planId, err)
+				//exitLoop = true
+				return
+			}
+			//exitLoop = true
 			return
 		}
 	}
-
 }
 
-func (p *plan) handlerTask(task Handler, errorCh chan error, resultCh chan client.TaskResult) {
-	defer p.mutex.Unlock()
+func (p *plan) handlerTask(task Handler, resultCh chan client.TaskResult, errorCh chan struct{}, wg *sync.WaitGroup) {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println(task.Name(), "task panic???????????: ", err)
+			wg.Done()
+			errorCh <- struct{}{}
+		} else {
+			klog.Infof("task(%s) done", task.Name())
+			wg.Done()
+		}
+	}()
+
 	planId := task.GetPlanId()
 	name := task.Name()
 
@@ -286,8 +317,8 @@ func (p *plan) handlerTask(task Handler, errorCh chan error, resultCh chan clien
 		taskResult.Status = model.FailedPlanStatus
 		taskResult.Step = step
 		resultCh <- *taskResult
-		errorCh <- runErr
-		return
+		klog.Errorf("failed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
+		panic(runErr)
 	}
 
 	taskResult.EndAt = time.Now()
@@ -295,10 +326,4 @@ func (p *plan) handlerTask(task Handler, errorCh chan error, resultCh chan clien
 	taskResult.Step = step
 	resultCh <- *taskResult
 	klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
-
-	defer func() {
-		//todo 用指针了,是不是就不需要再去保存了?
-		taskCache.SetCh(planId, resultCh)
-		taskCache.SetTaskResult(planId, taskResult)
-	}()
 }
