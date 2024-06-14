@@ -30,6 +30,7 @@ var ErrInvalidLogFormat = errors.New("invalid log format")
 type Config struct {
 	Default DefaultOptions `yaml:"default"`
 	Mysql   MysqlOptions   `yaml:"mysql"`
+	Worker  WorkerOptions  `yaml:"worker"`
 }
 
 type DefaultOptions struct {
@@ -77,6 +78,21 @@ func (o LogOptions) Valid() error {
 	}
 }
 
+type WorkerOptions struct {
+	WorkDir string   `yaml:"work_dir"`
+	Engines []Engine `yaml:"engines"`
+}
+
+type Engine struct {
+	Version string `yaml:"version"`
+	Image   string `yaml:"image"`
+}
+
+func (w WorkerOptions) Valid() error {
+	// TODO
+	return nil
+}
+
 func (c *Config) Valid() (err error) {
 	if err = c.Default.Valid(); err != nil {
 		return
@@ -84,5 +100,9 @@ func (c *Config) Valid() (err error) {
 	if err = c.Mysql.Valid(); err != nil {
 		return
 	}
+	if err = c.Worker.Valid(); err != nil {
+		return
+	}
+
 	return
 }

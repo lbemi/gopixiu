@@ -21,7 +21,6 @@ import (
 	"os"
 	"time"
 
-	pixiuConfig "github.com/caoyingjunz/pixiulib/config"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
 	"gorm.io/driver/mysql"
@@ -31,6 +30,7 @@ import (
 	"github.com/caoyingjunz/pixiu/cmd/app/config"
 	"github.com/caoyingjunz/pixiu/pkg/controller"
 	"github.com/caoyingjunz/pixiu/pkg/db"
+	pixiuConfig "github.com/caoyingjunz/pixiulib/config"
 )
 
 const (
@@ -41,6 +41,7 @@ const (
 	defaultTokenKey   = "pixiu"
 	defaultConfigFile = "/etc/pixiu/config.yaml"
 	defaultLogFormat  = config.LogFormatJson
+	defaultWorkDir    = "/etc/pixiu"
 
 	defaultSlowSQLDuration = 1 * time.Second
 )
@@ -95,6 +96,9 @@ func (o *Options) Complete() error {
 	}
 	if o.ComponentConfig.Default.LogFormat == "" {
 		o.ComponentConfig.Default.LogFormat = defaultLogFormat
+	}
+	if o.ComponentConfig.Worker.WorkDir == "" {
+		o.ComponentConfig.Worker.WorkDir = defaultWorkDir
 	}
 
 	if err := o.ComponentConfig.Valid(); err != nil {

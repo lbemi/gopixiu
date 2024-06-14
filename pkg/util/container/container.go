@@ -47,7 +47,7 @@ func NewContainer(action string, planId int64) (*Container, error) {
 }
 
 // StartAndWaitForContainer 创建，启动容器，并等待容器退出
-func (c *Container) StartAndWaitForContainer(ctx context.Context) error {
+func (c *Container) StartAndWaitForContainer(ctx context.Context, image string) error {
 	// 已经存在，则先删除运行的容器
 	if err := c.ClearContainer(ctx); err != nil {
 		return err
@@ -58,11 +58,11 @@ func (c *Container) StartAndWaitForContainer(ctx context.Context) error {
 			"author":    "caoyingjunz",
 			"pixiuName": c.name,
 		},
-		Image: "jacky06/kubez-ansible:v3.0.1",
+		Image: image,
 		Env:   []string{fmt.Sprintf("COMMAND=%s", c.action)},
 	}
 	hostConfig := &container.HostConfig{
-		Binds: []string{fmt.Sprintf("/tmp/kubez/%d:/configs", c.planId)},
+		Binds: []string{fmt.Sprintf("/tmp/pixiu/%d:/configs", c.planId)},
 	}
 	netConfig := &network.NetworkingConfig{}
 	resp, err := c.client.ContainerCreate(ctx, config, hostConfig, netConfig, c.name)

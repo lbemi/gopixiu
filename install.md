@@ -8,7 +8,7 @@ docker 已经安装
 选择1：直接提供可用数据库
 
 选择2：快速启动数据库
-docker run -d --net host --restart=always --privileged=true --name mariadb -e MYSQL_ROOT_PASSWORD="Pixiu868686" mysql:5.7
+docker run -d --net host --restart=always --privileged=true --name mariadb -e MYSQL_ROOT_PASSWORD="Pixiu868686" harbor.cloud.pixiuio.com/pixiuio/mysql:5.7
 
 创建 pixiu 数据库
 CREATE DATABASE pixiu;
@@ -42,7 +42,7 @@ vim /etc/pixiu/config.json
 ```
 # 启动 pixiu
 ```bash
-docker run -d --net host --restart=always --privileged=true -v /etc/pixiu/:/configs  --name pixiu-aio harbor.cloud.pixiuio.com/pixiuio/pixiu-aio
+docker run -d --net host --restart=always --privileged=true -v /etc/pixiu:/etc/pixiu -v /var/run/docker.sock:/var/run/docker.sock --name pixiu-aio harbor.cloud.pixiuio.com/pixiuio/pixiu-aio
 登录效果
 浏览器登陆: http://192.168.16.156
 ```

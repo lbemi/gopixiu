@@ -7,7 +7,7 @@ default:
   jwt_key: pixiu
   # 自动创建指定模型的数据库表结构，不会更新已存在的数据库表
   auto_migrate: true
-
+  # 日志的格式，可选 text 和 json
   log_format: json
 
 # 数据库地址信息
@@ -18,8 +18,17 @@ default:
 #  port: 3306
 #  name: pixiu
 mysql:
-  host: db-server
-  user: lbemi
-  password: Admin_1234
-  port: 3333
+  host: peng
+  user: root
+  password: Pixiu868686
+  port: 3306
   name: pixiu
+
+worker:
+  engines:
+    - version: v2
+      image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v2.0.1
+    - version: v3
+      image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v3.0.1
+    - version: offline
+      image: harbor.cloud.pixiuio.com/pixiuio/kubez-ansible:v2.0.1-offline
