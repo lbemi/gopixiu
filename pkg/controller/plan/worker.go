@@ -19,7 +19,6 @@ package plan
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -151,7 +150,6 @@ func (p *plan) syncHandler(ctx context.Context, planId int64) {
 		fmt.Printf("创建%s 缓存\n", handler.Name())
 		taskCache.SetTaskResult(planId, taskResult)
 	}
-	p.errorCh = make(chan error)
 	p.taskQueue = make(chan Handler)
 	go func() {
 		for _, handler := range handlers {
@@ -239,54 +237,35 @@ func (p *plan) syncStatus(planId int64) error {
 
 func (p *plan) syncTasks(planId int64) {
 	exitLoop := false
-	var wg sync.WaitGroup
-	errorCh := make(chan struct{})
 	for !exitLoop {
 		fmt.Println("循环中。。。。。")
 		select {
 		case task, ok := <-p.taskQueue:
 			if !ok {
-				p.syncStatus(planId)
-				//exitLoop = true
+				if err := p.syncStatus(planId); err != nil {
+					klog.Errorf("failed to sync plan(%d) status: %v", planId, err)
+				}
+				exitLoop = true
 				return
 			}
-			wg.Add(1)
 			resultCh, ok := taskCache.GetCh(task.GetPlanId())
 			if !ok {
 				resultCh = make(chan client.TaskResult, len(p.taskQueue))
 			}
-			p.handlerTask(task, resultCh, errorCh, &wg)
-			wg.Wait()
-		case <-errorCh:
-			fmt.Printf("errorChn 任务运行失败:")
-			taskCache.CloseCh(planId)
-			err := p.syncStatus(planId)
-			if err != nil {
-				klog.Errorf("failed to sync plan(%d) task status: %v", planId, err)
-				//exitLoop = true
+			if err := p.handlerTask(task, resultCh); err != nil {
+				klog.Errorf("failed to handler task(%s): %v", task.Name(), err)
+				if err = p.syncStatus(planId); err != nil {
+					klog.Errorf("failed to sync plan(%d) status: %v", planId, err)
+				}
 				return
 			}
-			//exitLoop = true
-			return
 		}
 	}
 }
 
-func (p *plan) handlerTask(task Handler, resultCh chan client.TaskResult, errorCh chan struct{}, wg *sync.WaitGroup) {
-	defer func() {
-		if err := recover(); err != nil {
-			fmt.Println(task.Name(), "task panic???????????: ", err)
-			wg.Done()
-			errorCh <- struct{}{}
-		} else {
-			klog.Infof("task(%s) done", task.Name())
-			wg.Done()
-		}
-	}()
-
+func (p *plan) handlerTask(task Handler, resultCh chan client.TaskResult) error {
 	planId := task.GetPlanId()
 	name := task.Name()
-
 	// 获取当前任务缓存信息
 	taskResult, ok := taskCache.GetTaskResult(planId, name)
 	if !ok {
@@ -294,8 +273,6 @@ func (p *plan) handlerTask(task Handler, resultCh chan client.TaskResult, errorC
 		taskResult = &client.TaskResult{
 			PlanId:  planId,
 			Name:    name,
-			StartAt: time.Now(),
-			EndAt:   time.Now(),
 			Status:  model.UnStartPlanStatus,
 			Message: "",
 		}
@@ -318,7 +295,7 @@ func (p *plan) handlerTask(task Handler, resultCh chan client.TaskResult, errorC
 		taskResult.Step = step
 		resultCh <- *taskResult
 		klog.Errorf("failed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
-		panic(runErr)
+		return runErr
 	}
 
 	taskResult.EndAt = time.Now()
@@ -326,4 +303,6 @@ func (p *plan) handlerTask(task Handler, resultCh chan client.TaskResult, errorC
 	taskResult.Step = step
 	resultCh <- *taskResult
 	klog.Infof("completed plan(%d) task(%s),result: %v,len: %d", planId, name, taskResult, len(resultCh))
+
+	return nil
 }

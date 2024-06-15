@@ -85,7 +85,6 @@ type plan struct {
 	factory   db.ShareDaoFactory
 	mutex     sync.Mutex
 	taskQueue chan Handler
-	errorCh   chan error
 }
 
 // Create
