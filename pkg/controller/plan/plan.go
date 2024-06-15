@@ -20,12 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"sync"
-
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"sort"
+	"sync"
+	"time"
 
 	"github.com/caoyingjunz/pixiu/api/server/errors"
 	"github.com/caoyingjunz/pixiu/cmd/app/config"
@@ -67,7 +67,7 @@ type Interface interface {
 
 	RunTask(ctx context.Context, planId int64, taskId int64) error
 	ListTasks(ctx context.Context, planId int64) ([]types.PlanTask, error)
-	GetTaskResults(planId int64, writer gin.ResponseWriter)
+	GetTaskResults(planId int64, c *gin.Context)
 }
 
 var (
@@ -254,36 +254,72 @@ func NewPlan(cfg config.Config, f db.ShareDaoFactory) *plan {
 }
 
 // 等待获取任务结果
-func (p *plan) GetTaskResults(planId int64, w gin.ResponseWriter) {
-	resultCh, ok := taskCache.GetCh(planId)
-	if !ok || resultCh == nil {
+func (p *plan) GetTaskResults(planId int64, c *gin.Context) {
+	w := c.Writer
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	resultQueue, ok := taskCache.GetResultQueue(planId)
+	//如果任务不在执行,从数据库中获取任务结果
+	if !ok || resultQueue == nil {
+		fmt.Println("任务结束啦，从数据库获取数据---------111111111111")
 		klog.Warningf("get task result channel failed")
+		results, err := p.factory.Plan().ListTasks(context.Background(), planId)
+		if err != nil {
+			klog.Errorf("failed to get task result from database: %v", err)
+			return
+		}
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Id < results[j].Id
+		})
+
+		if err = json.NewEncoder(w).Encode(results); err != nil {
+			klog.Errorf("failed to encode task result: %v", err)
+			return
+		}
+		w.Flush()
 		return
 	}
-
-	taskResult, ok := taskCache.GetResult(planId)
+	//如果任务正在执行，从缓存中获取任务结果
+	taskResult, ok := taskCache.GetPlanResult(planId)
 	if !ok || taskResult == nil {
-		klog.Warningf("get task result failed")
+		fmt.Println("任务正在执行，但是缓存没数据，从数据库中获取数据-----------22222222")
+		klog.Warningf("get task result from cache failed")
+		results, err := p.factory.Plan().ListTasks(context.Background(), planId)
+		if err := json.NewEncoder(w).Encode(results); err != nil {
+			klog.Errorf("failed to encode task result: %v", err)
+			return
+		}
+		w.Flush()
+		if err != nil {
+			klog.Errorf("failed to get task result from database: %v", err)
+			return
+		}
 		return
 	}
 	//持续获取任务结果,知道任务完成
 	for {
-		var results []client.TaskResult
+		_, ok := <-resultQueue
+		fmt.Println("任务正在执行，从缓存中获取数据---------3333333333")
+		var results []*model.Task
 		for _, t := range taskResult {
-			results = append(results, *t)
+			results = append(results, t)
 		}
-
-		flusher, _ := w.(http.Flusher)
+		//排序
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Id < results[j].Id
+		})
 		if err := json.NewEncoder(w).Encode(results); err != nil {
 			klog.Errorf("failed to encode task result: %v", err)
 			break
 		}
-		flusher.Flush()
-		result, ok := <-resultCh
+		w.Flush()
+		time.Sleep(time.Second)
 		if !ok {
-			fmt.Println("get task results closed", len(resultCh))
+			//	清理缓存
+			taskCache.ClearPlanResult(planId)
 			break
 		}
-		fmt.Println("get task results", result, len(resultCh))
 	}
 }

@@ -18,6 +18,7 @@ package model
 
 import (
 	"github.com/caoyingjunz/pixiu/pkg/db/model/pixiu"
+	"time"
 )
 
 func init() {
@@ -107,6 +108,8 @@ type Task struct {
 	Step    PlanStep   `json:"step"`
 	Status  TaskStatus `json:"status"`
 	Message string     `json:"message"`
+	StartAt time.Time  `json:"start_at"`
+	EndAt   time.Time  `json:"end_at"`
 }
 
 func (task *Task) TableName() string {
