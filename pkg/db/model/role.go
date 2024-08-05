@@ -19,47 +19,46 @@ package model
 import (
 	"time"
 
-	"github.com/caoyingjunz/pixiu/pkg/db/model/pixiu"
 	"gorm.io/gorm"
+
+	"github.com/caoyingjunz/pixiu/pkg/db/model/pixiu"
 )
 
 func init() {
-	register(&User{})
+	register(&Role{})
 }
 
-// type UserRole uint8
+type CommonStatus uint8
 
-// const (
-// 	RoleUser  UserRole = iota // 普通用户
-// 	RoleAdmin                 // 管理员
-// 	RoleRoot                  // 超级管理员
-// )
+const (
+	EnableStatus  CommonStatus = 1 //启用
+	DisableStatus CommonStatus = 2 //禁用
+)
 
-type UserStatus uint8 // TODO
-
-type User struct {
+type Role struct {
 	pixiu.Model
 
-	Name        string       `gorm:"index:idx_name,unique" json:"name"`
-	Password    string       `gorm:"type:varchar(256)" json:"-"`
-	Status      CommonStatus `gorm:"type:tinyint;default:1" json:"status"`
-	Email       string       `gorm:"type:varchar(128)" json:"email"`
+	Name        string       `gorm:"index:idx_name" json:"name"`
 	Description string       `gorm:"type:text" json:"description"`
+	Sequence    int          `gorm:"type:int" json:"sequence"`
+	ParentId    int64        `gorm:"type:int" json:"parent_id"`
+	Status      CommonStatus `gorm:"type:tinyint;not null;default:1;comment:状态(1:启用 2:不启用)" json:"status"`
+	Children    []*Role      `gorm:"-" json:"children"`
 	Extension   string       `gorm:"type:text" json:"extension,omitempty"`
 }
 
-func (u *User) TableName() string {
-	return "users"
+func (*Role) TableName() string {
+	return "roles"
 }
 
-func (u *User) BeforeCreate(*gorm.DB) error {
-	u.GmtCreate = time.Now()
-	u.GmtModified = time.Now()
+func (r *Role) BeforeCreate(*gorm.DB) error {
+	r.GmtCreate = time.Now()
+	r.GmtModified = time.Now()
 	return nil
 }
 
-func (u *User) BeforeUpdate(*gorm.DB) error {
-	u.GmtModified = time.Now()
-	u.ResourceVersion++
+func (r *Role) BeforeUpdate(*gorm.DB) error {
+	r.GmtModified = time.Now()
+	r.ResourceVersion++
 	return nil
 }

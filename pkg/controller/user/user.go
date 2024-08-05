@@ -19,7 +19,6 @@ package user
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/casbin/casbin/v2"
 	"k8s.io/klog/v2"
@@ -91,18 +90,19 @@ func (u *user) Create(ctx context.Context, req *types.CreateUserRequest) error {
 		return err
 	}
 
+	// TODO 创建用户授权默认角色
 	txFunc := func() (err error) {
-		if req.Role == model.RoleRoot {
-			_, err = u.enforcer.AddGroupingPolicy(req.Name, "root")
-		}
+		// if req.Role == model.RoleRoot {
+		// 	_, err = u.enforcer.AddGroupingPolicy(req.Name, "root")
+		// }
 		return
 	}
 
 	if _, err = u.factory.User().Create(ctx, &model.User{
-		Name:        req.Name,
-		Password:    encrypt,
-		Status:      req.Status,
-		Role:        req.Role,
+		Name:     req.Name,
+		Password: encrypt,
+		Status:   req.Status,
+		// Role:        req.Role,
 		Email:       req.Email,
 		Description: req.Description,
 	}, txFunc); err != nil {
@@ -130,14 +130,15 @@ func (u *user) Update(ctx context.Context, uid int64, req *types.UpdateUserReque
 
 func (u *user) preResetPassword(ctx context.Context, userId int64, operatorId int64, req *types.UpdateUserPasswordRequest) error {
 	// 操作人必须具备管理员权限
-	operator, err := u.Get(ctx, operatorId)
+	_, err := u.Get(ctx, operatorId)
 	if err != nil {
 		return err
 	}
 
-	if operator.Role != model.RoleRoot {
-		return fmt.Errorf("非超级管理员，不允许重置用户密码")
-	}
+	//TODO 判断操作人权限
+	// if operator.Role != model.RoleRoot {
+	// 	return fmt.Errorf("非超级管理员，不允许重置用户密码")
+	// }
 	return nil
 }
 
@@ -288,12 +289,12 @@ func (u *user) Login(ctx context.Context, req *types.LoginRequest) (*types.Login
 	}
 
 	// for compatibility
-	if object.Role == model.RoleRoot {
-		if _, err := u.enforcer.AddGroupingPolicy(object.Name, "root"); err != nil {
-			klog.Errorf("failed to add root policy for user(%s): %v", err, object.Name)
-			return nil, errors.NewError(fmt.Errorf("添加 root 组权限规则失败: %v", err), http.StatusInternalServerError)
-		}
-	}
+	// if object.Role == model.RoleRoot {
+	// 	if _, err := u.enforcer.AddGroupingPolicy(object.Name, "root"); err != nil {
+	// 		klog.Errorf("failed to add root policy for user(%s): %v", err, object.Name)
+	// 		return nil, errors.NewError(fmt.Errorf("添加 root 组权限规则失败: %v", err), http.StatusInternalServerError)
+	// 	}
+	// }
 
 	// 生成登陆的 token 信息
 	key := u.GetTokenKey()
@@ -307,8 +308,8 @@ func (u *user) Login(ctx context.Context, req *types.LoginRequest) (*types.Login
 		UserId:   object.Id,
 		UserName: object.Name,
 		Token:    token,
-		Role:     object.Role,
-		User:     object,
+		// Role:     object.Role,
+		User: object,
 	}, nil
 }
 
@@ -344,8 +345,8 @@ func model2Type(o *model.User) *types.User {
 		Name:        o.Name,
 		Description: o.Description,
 		Status:      o.Status,
-		Role:        o.Role,
-		Email:       o.Email,
+		// Role:        o.Role,
+		Email: o.Email,
 		TimeMeta: types.TimeMeta{
 			GmtCreate:   o.GmtCreate,
 			GmtModified: o.GmtModified,

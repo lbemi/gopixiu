@@ -26,12 +26,12 @@ type (
 	}
 
 	CreateUserRequest struct {
-		Name        string           `json:"name" binding:"required"`              // required
-		Password    string           `json:"password" binding:"required,password"` // required
-		Role        model.UserRole   `json:"role" binding:"omitempty,oneof=0 1 2"` // optional
-		Status      model.UserStatus `json:"status" binding:"omitempty"`
-		Email       string           `json:"email" binding:"omitempty,email"` // optional
-		Description string           `json:"description" binding:"omitempty"` // optional
+		Name     string `json:"name" binding:"required"`              // required
+		Password string `json:"password" binding:"required,password"` // required
+		// Role        model.UserRole     `json:"role" binding:"omitempty,oneof=0 1 2"` // optional
+		Status      model.CommonStatus `json:"status" binding:"omitempty"`
+		Email       string             `json:"email" binding:"omitempty,email"` // optional
+		Description string             `json:"description" binding:"omitempty"` // optional
 	}
 
 	// !Note: if you want to update description only, email also must be provided with current value
