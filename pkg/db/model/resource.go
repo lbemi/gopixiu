@@ -24,27 +24,27 @@ import (
 )
 
 func init() {
-	register(&RoleMenu{})
+	register(&Resource{})
 }
 
-type RoleMenu struct {
+type Resource struct {
 	pixiu.Model
 
-	RoleID int `gorm:"primaryKey;column:role_id;type:int(11)" json:"role_id"`
-	MenuID int `gorm:"primaryKey;column:menu_id;type:int(11)" json:"menu_id"`
+	ResourceType string
+	ResourceId   int64
 }
 
-func (*RoleMenu) TableName() string {
-	return "role_menus"
+func (Resource) TableName() string {
+	return "resources"
 }
 
-func (r *RoleMenu) BeforeCreate(*gorm.DB) error {
+func (r *Resource) BeforeCreate(*gorm.DB) error {
 	r.GmtCreate = time.Now()
 	r.GmtModified = time.Now()
 	return nil
 }
 
-func (r *RoleMenu) BeforeUpdate(*gorm.DB) error {
+func (r *Resource) BeforeUpdate(*gorm.DB) error {
 	r.GmtModified = time.Now()
 	r.ResourceVersion++
 	return nil
