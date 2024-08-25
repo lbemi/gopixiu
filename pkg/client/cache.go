@@ -18,13 +18,16 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"reflect"
+	"strings"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	appsv1 "k8s.io/client-go/listers/apps/v1"
-	batchv1 "k8s.io/client-go/listers/batch/v1"
+	"k8s.io/client-go/listers/batch/v1beta1"
 	v1 "k8s.io/client-go/listers/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -39,6 +42,13 @@ var (
 		{Group: "apps", Version: "v1", Resource: "statefulsets"},
 		{Group: "apps", Version: "v1", Resource: "daemonsets"},
 		{Group: "batch", Version: "v1", Resource: "cronjobs"},
+	}
+	watchResource = map[string]schema.GroupVersionResource{
+		"Pod":         {},
+		"Deployment":  {},
+		"StatefulSet": {},
+		"DaemonSet":   {},
+		"CronJob":     {},
 	}
 )
 
@@ -71,8 +81,31 @@ func (p *PixiuInformer) DaemonSetsLister() appsv1.DaemonSetLister {
 	return p.Shared.Apps().V1().DaemonSets().Lister()
 }
 
-func (p *PixiuInformer) CronJobsLister() batchv1.CronJobLister {
-	return p.Shared.Batch().V1().CronJobs().Lister()
+func (p *PixiuInformer) CronJobsLister() v1beta1.CronJobLister {
+	gvr := watchResource["CronJob"]
+	group := gvr.Group
+	version := gvr.Version
+
+	batchInterface := reflect.ValueOf(p.Shared.Batch())
+	versionMethod := batchInterface.MethodByName(strings.Title(version))
+	if !versionMethod.IsValid() {
+		return nil // Or handle error appropriately
+	}
+
+	versionInterface := versionMethod.Call(nil)[0]
+	cronJobsMethod := versionInterface.MethodByName("CronJobs")
+	if !cronJobsMethod.IsValid() {
+		return nil // Or handle error appropriately
+	}
+
+	cronJobsInterface := cronJobsMethod.Call(nil)[0]
+	listerMethod := cronJobsInterface.MethodByName("Lister")
+	if !listerMethod.IsValid() {
+		return nil // Or handle error appropriately
+	}
+
+	lister := listerMethod.Call(nil)[0].Interface()
+	return lister.(v1beta1.CronJobLister)
 }
 
 type ClusterSet struct {
@@ -111,12 +144,40 @@ func NewSharedInformers(c *restclient.Config) (informers.SharedInformerFactory, 
 	if err != nil {
 		return nil, nil, err
 	}
+	apiResourcesList, err := clientSet.Discovery().ServerPreferredResources()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, apiResources := range apiResourcesList {
+		for _, apiResource := range apiResources.APIResources {
+			kind := apiResource.Kind
+			if _, ok := watchResource[apiResource.Kind]; ok {
+				groupVersion := strings.Split(apiResources.GroupVersion, "/")
+				gvr := schema.GroupVersionResource{}
+				if len(groupVersion) == 1 {
+					gvr.Group = ""
+					gvr.Version = groupVersion[0]
+				} else {
+					gvr.Group = groupVersion[0]
+					gvr.Version = groupVersion[1]
+				}
+				gvr.Resource = apiResource.Name
+				watchResource[kind] = gvr
+			}
+		}
+	}
 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
-	for _, gvr := range groupVersionResources {
+	for _, gvr := range watchResource {
+		fmt.Printf("watch resource: %v\n", gvr)
 		if _, err = informerFactory.ForResource(gvr); err != nil {
 			return nil, nil, err
 		}
 	}
+	// for _, gvr := range groupVersionResources {
+	// 	if _, err = informerFactory.ForResource(gvr); err != nil {
+	// 		return nil, nil, err
+	// 	}
+	// }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	// Start all informers.
