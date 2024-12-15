@@ -97,6 +97,8 @@ func (cr *clusterRouter) initRoutes(httpEngine *gin.Engine) {
 		helmRoute.GET("/clusters/:cluster/v1/namespaces/:namespace/releases/:name/history", cr.GetReleaseHistory)
 		helmRoute.POST("/clusters/:cluster/v1/namespaces/:namespace/releases/:name/rollback", cr.RollbackRelease)
 
+		helmRoute.POST("/clusters/:cluster/v2/namespaces/:namespace/releases", cr.InstallReleaseV2)
+
 		// helm reposistories
 		helmRoute.GET("/clusters/:cluster/reposistories", cr.listReposistories)
 		helmRoute.POST("/clusters/:cluster/reposistories", cr.createReposistories)

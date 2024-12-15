@@ -26,6 +26,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
@@ -34,6 +35,7 @@ import (
 
 type IHelm interface {
 	Releases(namespace string) IReleases
+	ReleasesV2(namespace string) IReleasesV2
 	Repositories() IRepositories
 }
 
@@ -43,6 +45,7 @@ type Helm struct {
 	settings          *cli.EnvSettings
 	actionConfig      *action.Configuration
 	resetClientGetter *HelmRESTClientGeeter
+	clientSet         *kubernetes.Clientset
 }
 
 func (h *Helm) Releases(namespace string) IReleases {
@@ -59,6 +62,20 @@ func (h *Helm) Releases(namespace string) IReleases {
 	return newReleases(h.actionConfig, h.settings)
 }
 
+func (h *Helm) ReleasesV2(namespace string) IReleasesV2 {
+	h.settings.SetNamespace(namespace)
+	if err := h.actionConfig.Init(
+		h.resetClientGetter,
+		h.settings.Namespace(),
+		os.Getenv("HELM_DRIVER"),
+		klog.Infof,
+	); err != nil {
+		klog.Errorf("failed to init helm action config: %v", err)
+		return nil
+	}
+	return newReleasesV2(h.actionConfig, h.settings, h.clientSet)
+}
+
 func (h *Helm) Repositories() IRepositories {
 	return newRepositories(h.cluster, h.settings, h.actionConfig, h.factory)
 }
@@ -67,12 +84,23 @@ func newHelm(kubeConfig *rest.Config, cluster string, factory db.ShareDaoFactory
 	settings := cli.New()
 	actionCofnig := new(action.Configuration)
 	resetClientGetter := newHelmRESTClientGeeter(kubeConfig)
+
+	clientSet, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		klog.Errorf("failed to create kubernetes client: %v", err)
+		return nil
+	}
+	settings.KubeAPIServer = kubeConfig.Host
+	settings.KubeAsUser = kubeConfig.Username
+	settings.KubeToken = kubeConfig.BearerToken
+	settings.KubeCaFile = string(kubeConfig.CertData)
 	return &Helm{
 		settings:          settings,
 		actionConfig:      actionCofnig,
 		resetClientGetter: resetClientGetter,
 		cluster:           cluster,
 		factory:           factory,
+		clientSet:         clientSet,
 	}
 }
 
