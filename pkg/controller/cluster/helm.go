@@ -19,7 +19,6 @@ package cluster
 import (
 	"os"
 
-	"github.com/caoyingjunz/pixiu/pkg/db"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/cli"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -30,11 +29,13 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
+	"github.com/caoyingjunz/pixiu/pkg/db"
 )
 
-type IHelm interface {
-	Releases(namespace string) IReleases
-	Repositories() IRepositories
+type HelmInterface interface {
+	Releases(namespace string) ReleaseInterface
+	Repositories() RepositoriesInterface
 }
 
 type Helm struct {
@@ -42,10 +43,10 @@ type Helm struct {
 	factory           db.ShareDaoFactory
 	settings          *cli.EnvSettings
 	actionConfig      *action.Configuration
-	resetClientGetter *HelmRESTClientGeeter
+	resetClientGetter *HelmRESTClientGetter
 }
 
-func (h *Helm) Releases(namespace string) IReleases {
+func (h *Helm) Releases(namespace string) ReleaseInterface {
 	h.settings.SetNamespace(namespace)
 	if err := h.actionConfig.Init(
 		h.resetClientGetter,
@@ -59,31 +60,40 @@ func (h *Helm) Releases(namespace string) IReleases {
 	return newReleases(h.actionConfig, h.settings)
 }
 
-func (h *Helm) Repositories() IRepositories {
+func (h *Helm) Repositories() RepositoriesInterface {
+	if err := h.actionConfig.Init(
+		h.resetClientGetter,
+		h.settings.Namespace(),
+		os.Getenv("HELM_DRIVER"),
+		klog.Infof,
+	); err != nil {
+		klog.Errorf("failed to init helm action config: %v", err)
+		return nil
+	}
 	return newRepositories(h.cluster, h.settings, h.actionConfig, h.factory)
 }
 
 func newHelm(kubeConfig *rest.Config, cluster string, factory db.ShareDaoFactory) *Helm {
 	settings := cli.New()
-	actionCofnig := new(action.Configuration)
-	resetClientGetter := newHelmRESTClientGeeter(kubeConfig)
+	actionConfig := new(action.Configuration)
+	resetClientGetter := newHelmRESTClientGetter(kubeConfig)
 	return &Helm{
 		settings:          settings,
-		actionConfig:      actionCofnig,
+		actionConfig:      actionConfig,
 		resetClientGetter: resetClientGetter,
 		cluster:           cluster,
 		factory:           factory,
 	}
 }
 
-type HelmRESTClientGeeter struct {
+type HelmRESTClientGetter struct {
 	kubeConfig *rest.Config
 }
 
-var _ genericclioptions.RESTClientGetter = &HelmRESTClientGeeter{}
+var _ genericclioptions.RESTClientGetter = &HelmRESTClientGetter{}
 
 // ToDiscoveryClient implements action.RESTClientGetter.
-func (h *HelmRESTClientGeeter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
+func (h *HelmRESTClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
 	h.kubeConfig.Burst = 100
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(h.kubeConfig)
 	if err != nil {
@@ -93,12 +103,12 @@ func (h *HelmRESTClientGeeter) ToDiscoveryClient() (discovery.CachedDiscoveryInt
 }
 
 // ToRESTConfig implements action.RESTClientGetter.
-func (h *HelmRESTClientGeeter) ToRESTConfig() (*rest.Config, error) {
+func (h *HelmRESTClientGetter) ToRESTConfig() (*rest.Config, error) {
 	return h.kubeConfig, nil
 }
 
 // ToRESTMapper implements action.RESTClientGetter.
-func (h *HelmRESTClientGeeter) ToRESTMapper() (meta.RESTMapper, error) {
+func (h *HelmRESTClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
 
 	discoveryClient, err := h.ToDiscoveryClient()
 	if err != nil {
@@ -108,15 +118,15 @@ func (h *HelmRESTClientGeeter) ToRESTMapper() (meta.RESTMapper, error) {
 	expander := restmapper.NewShortcutExpander(mapper, discoveryClient)
 	return expander, nil
 }
-func (h *HelmRESTClientGeeter) ToRawKubeConfigLoader() clientcmd.ClientConfig {
+func (h *HelmRESTClientGetter) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
 	overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
 }
 
-func newHelmRESTClientGeeter(kubeConfig *rest.Config) *HelmRESTClientGeeter {
-	return &HelmRESTClientGeeter{
+func newHelmRESTClientGetter(kubeConfig *rest.Config) *HelmRESTClientGetter {
+	return &HelmRESTClientGetter{
 		kubeConfig: kubeConfig,
 	}
 }

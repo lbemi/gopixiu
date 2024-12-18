@@ -17,16 +17,17 @@ limitations under the License.
 package cluster
 
 import (
+	"github.com/gin-gonic/gin"
+
 	"github.com/caoyingjunz/pixiu/api/server/httputils"
 	"github.com/caoyingjunz/pixiu/pkg/types"
-	"github.com/gin-gonic/gin"
 )
 
-// createReposistories creates a new repository
+// createRepository creates a new repository
 //
 // @Summary create a new repository
 // @Description creates a new repository from the system
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param cluster body types.RepoObjectMeta true "Kubernetes cluster name"
@@ -34,8 +35,8 @@ import (
 // @Success 200 {object} httputils.Response
 // @Failure 400 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories [post]
-func (cr *clusterRouter) createReposistory(c *gin.Context) {
+// @Router /repositories [post]
+func (cr *clusterRouter) createRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
 	var (
@@ -57,11 +58,11 @@ func (cr *clusterRouter) createReposistory(c *gin.Context) {
 	httputils.SetSuccess(c, r)
 }
 
-// deleteReposistory deletes a repository by its ID
+// deleteRepository deletes a repository by its ID
 //
 // @Summary delete a repository by ID
 // @Description deletes a repository from the system using the provided ID
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -69,8 +70,8 @@ func (cr *clusterRouter) createReposistory(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/{id} [delete]
-func (cr *clusterRouter) deleteReposistory(c *gin.Context) {
+// @Router /repositories/{id} [delete]
+func (cr *clusterRouter) deleteRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
 	var (
@@ -89,11 +90,11 @@ func (cr *clusterRouter) deleteReposistory(c *gin.Context) {
 	httputils.SetSuccess(c, r)
 }
 
-// updateReposistory updates a repository by its ID
+// updateRepository updates a repository by its ID
 //
 // @Summary update a repository by ID
 // @Description updates a repository in the system using the provided ID
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -102,9 +103,9 @@ func (cr *clusterRouter) deleteReposistory(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/{id} [put]
+// @Router /repositories/{id} [put]
 
-func (cr *clusterRouter) updateReposistory(c *gin.Context) {
+func (cr *clusterRouter) updateRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
 	var (
@@ -124,11 +125,11 @@ func (cr *clusterRouter) updateReposistory(c *gin.Context) {
 	httputils.SetSuccess(c, r)
 }
 
-// getReposistory retrieves a repository by its ID
+// getRepository retrieves a repository by its ID
 //
 // @Summary get a repository by ID
 // @Description retrieves a repository from the system using the provided ID
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -136,8 +137,8 @@ func (cr *clusterRouter) updateReposistory(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/{id} [get]
-func (cr *clusterRouter) getReposistory(c *gin.Context) {
+// @Router /repositories/{id} [get]
+func (cr *clusterRouter) getRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
 	var (
@@ -156,11 +157,11 @@ func (cr *clusterRouter) getReposistory(c *gin.Context) {
 	httputils.SetSuccess(c, r)
 }
 
-// getReposistoryByName retrieves a repository by its name
+// getRepositoryByName retrieves a repository by its name
 //
 // @Summary get a repository by name
 // @Description retrieves a repository from the system using the provided name
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param name path string true "Repository name"
@@ -168,8 +169,8 @@ func (cr *clusterRouter) getReposistory(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/name/{name} [get]
-func (cr *clusterRouter) getReposistoryByName(c *gin.Context) {
+// @Router /repositories/name/{name} [get]
+func (cr *clusterRouter) getRepositoryByName(c *gin.Context) {
 	r := httputils.NewResponse()
 
 	var (
@@ -188,11 +189,11 @@ func (cr *clusterRouter) getReposistoryByName(c *gin.Context) {
 	httputils.SetSuccess(c, r)
 }
 
-// listReposistories lists all repositories in the specified cluster
+// listRepositories lists all repositories in the specified cluster
 //
 // @Summary list all repositories
 // @Description retrieves a list of all repositories from the specified Kubernetes cluster
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param cluster query string true "Kubernetes cluster name"
@@ -200,8 +201,8 @@ func (cr *clusterRouter) getReposistoryByName(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories [get]
-func (cr *clusterRouter) listReposistories(c *gin.Context) {
+// @Router /repositories [get]
+func (cr *clusterRouter) listRepositories(c *gin.Context) {
 	r := httputils.NewResponse()
 	var (
 		err       error
@@ -224,7 +225,7 @@ func (cr *clusterRouter) listReposistories(c *gin.Context) {
 //
 // @Summary get repository charts by ID
 // @Description retrieves charts associated with a repository from the system using the provided ID
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -232,7 +233,7 @@ func (cr *clusterRouter) listReposistories(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/{id}/charts [get]
+// @Router /repositories/{id}/charts [get]
 func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 	r := httputils.NewResponse()
 	var (
@@ -256,7 +257,7 @@ func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 //
 // @Summary get repository charts by URL
 // @Description retrieves charts associated with a repository from the system using the provided URL
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param cluster query string true "Kubernetes cluster name"
@@ -265,7 +266,7 @@ func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/charts [get]
+// @Router /repositories/charts [get]
 func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 	r := httputils.NewResponse()
 	var (
@@ -290,7 +291,7 @@ func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 //
 // @Summary get chart values
 // @Description retrieves values of a chart in a repository from the system using the provided chart name and version
-// @Tags reposistories
+// @Tags repositories
 // @Accept json
 // @Produce json
 // @Param cluster query string true "Kubernetes cluster name"
@@ -300,7 +301,7 @@ func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /reposistories/values [get]
+// @Router /repositories/values [get]
 func (cr *clusterRouter) getChartValues(c *gin.Context) {
 
 	r := httputils.NewResponse()

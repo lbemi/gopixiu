@@ -33,10 +33,10 @@ import (
 )
 
 type RepoGetter interface {
-	Repositories() IRepositories
+	Repositories() RepositoriesInterface
 }
 
-type IRepositories interface {
+type RepositoriesInterface interface {
 	Create(ctx context.Context, repo *types.RepoForm) error
 	Delete(ctx context.Context, id int64) error
 	Get(ctx context.Context, id int64) (*model.Repositories, error)
@@ -60,7 +60,7 @@ func newRepositories(cluster string, settings *cli.EnvSettings, actionConfig *ac
 	return &Repositories{cluster: cluster, settings: settings, actionConfig: actionConfig, factory: f}
 }
 
-var _ IRepositories = &Repositories{}
+var _ RepositoriesInterface = &Repositories{}
 
 func (r *Repositories) Create(ctx context.Context, repo *types.RepoForm) error {
 	repoModel := &model.Repositories{
@@ -115,21 +115,21 @@ func (r *Repositories) Update(ctx context.Context, id int64, update *types.RepoU
 }
 
 func (r *Repositories) GetRepoChartsById(ctx context.Context, id int64) (*model.ChartIndex, error) {
-	reposistory, err := r.Get(ctx, id)
+	repository, err := r.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	entry := &repo.Entry{
-		Name:                  reposistory.Name,
-		URL:                   reposistory.URL,
-		Username:              reposistory.Username,
-		Password:              reposistory.Password,
-		CertFile:              reposistory.CertFile,
-		KeyFile:               reposistory.KeyFile,
-		CAFile:                reposistory.CAFile,
-		InsecureSkipTLSverify: reposistory.InsecureSkipTLSverify,
-		PassCredentialsAll:    reposistory.PassCredentialsAll,
+		Name:                  repository.Name,
+		URL:                   repository.URL,
+		Username:              repository.Username,
+		Password:              repository.Password,
+		CertFile:              repository.CertFile,
+		KeyFile:               repository.KeyFile,
+		CAFile:                repository.CAFile,
+		InsecureSkipTLSverify: repository.InsecureSkipTLSverify,
+		PassCredentialsAll:    repository.PassCredentialsAll,
 	}
 	return r.fetch(ctx, entry)
 }
