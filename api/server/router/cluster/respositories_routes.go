@@ -27,7 +27,7 @@ import (
 //
 // @Summary create a new repository
 // @Description creates a new repository from the system
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param cluster body types.RepoObjectMeta true "Kubernetes cluster name"
@@ -35,7 +35,7 @@ import (
 // @Success 200 {object} httputils.Response
 // @Failure 400 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories [post]
+// @Router /Repository [post]
 func (cr *clusterRouter) createRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
@@ -50,7 +50,7 @@ func (cr *clusterRouter) createRepository(c *gin.Context) {
 		return
 	}
 
-	if err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repositories().Create(c, &formData); err != nil {
+	if err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repository().Create(c, &formData); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -62,7 +62,7 @@ func (cr *clusterRouter) createRepository(c *gin.Context) {
 //
 // @Summary delete a repository by ID
 // @Description deletes a repository from the system using the provided ID
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -70,7 +70,7 @@ func (cr *clusterRouter) createRepository(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories/{id} [delete]
+// @Router /Repository/{id} [delete]
 func (cr *clusterRouter) deleteRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
@@ -82,7 +82,7 @@ func (cr *clusterRouter) deleteRepository(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	if err = cr.c.Cluster().Helm(repoMeta.Cluster).Repositories().Delete(c, repoMeta.Id); err != nil {
+	if err = cr.c.Cluster().Helm(repoMeta.Cluster).Repository().Delete(c, repoMeta.Id); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -94,7 +94,7 @@ func (cr *clusterRouter) deleteRepository(c *gin.Context) {
 //
 // @Summary update a repository by ID
 // @Description updates a repository in the system using the provided ID
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -103,7 +103,7 @@ func (cr *clusterRouter) deleteRepository(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories/{id} [put]
+// @Router /Repository/{id} [put]
 
 func (cr *clusterRouter) updateRepository(c *gin.Context) {
 	r := httputils.NewResponse()
@@ -117,7 +117,7 @@ func (cr *clusterRouter) updateRepository(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	if err = cr.c.Cluster().Helm(repoMeta.Cluster).Repositories().Update(c, repoMeta.Id, &formData); err != nil {
+	if err = cr.c.Cluster().Helm(repoMeta.Cluster).Repository().Update(c, repoMeta.Id, &formData); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -129,7 +129,7 @@ func (cr *clusterRouter) updateRepository(c *gin.Context) {
 //
 // @Summary get a repository by ID
 // @Description retrieves a repository from the system using the provided ID
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -137,7 +137,7 @@ func (cr *clusterRouter) updateRepository(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories/{id} [get]
+// @Router /Repository/{id} [get]
 func (cr *clusterRouter) getRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 
@@ -149,7 +149,7 @@ func (cr *clusterRouter) getRepository(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	if r.Result, err = cr.c.Cluster().Helm(repoMeta.Cluster).Repositories().Get(c, repoMeta.Id); err != nil {
+	if r.Result, err = cr.c.Cluster().Helm(repoMeta.Cluster).Repository().Get(c, repoMeta.Id); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -157,20 +157,20 @@ func (cr *clusterRouter) getRepository(c *gin.Context) {
 	httputils.SetSuccess(c, r)
 }
 
-// listRepositories lists all repositories in the specified cluster
+// listRepository lists all Repository in the specified cluster
 //
-// @Summary list all repositories
-// @Description retrieves a list of all repositories from the specified Kubernetes cluster
-// @Tags repositories
+// @Summary list all Repository
+// @Description retrieves a list of all Repository from the specified Kubernetes cluster
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param cluster query string true "Kubernetes cluster name"
-// @Success 200 {object} httputils.Response{result=[]model.Repositories}
+// @Success 200 {object} httputils.Response{result=[]model.Repository}
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories [get]
-func (cr *clusterRouter) listRepositories(c *gin.Context) {
+// @Router /Repository [get]
+func (cr *clusterRouter) listRepository(c *gin.Context) {
 	r := httputils.NewResponse()
 	var (
 		err       error
@@ -181,7 +181,7 @@ func (cr *clusterRouter) listRepositories(c *gin.Context) {
 		return
 	}
 
-	if r.Result, err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repositories().List(c); err != nil {
+	if r.Result, err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repository().List(c); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -193,7 +193,7 @@ func (cr *clusterRouter) listRepositories(c *gin.Context) {
 //
 // @Summary get repository charts by ID
 // @Description retrieves charts associated with a repository from the system using the provided ID
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param id path int true "Repository ID"
@@ -201,7 +201,7 @@ func (cr *clusterRouter) listRepositories(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories/{id}/charts [get]
+// @Router /Repository/{id}/charts [get]
 func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 	r := httputils.NewResponse()
 	var (
@@ -213,7 +213,7 @@ func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	if r.Result, err = cr.c.Cluster().Helm(repoMeta.Cluster).Repositories().GetRepoChartsById(c, repoMeta.Id); err != nil {
+	if r.Result, err = cr.c.Cluster().Helm(repoMeta.Cluster).Repository().GetRepoChartsById(c, repoMeta.Id); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -225,7 +225,7 @@ func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 //
 // @Summary get repository charts by URL
 // @Description retrieves charts associated with a repository from the system using the provided URL
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param cluster query string true "Kubernetes cluster name"
@@ -234,7 +234,7 @@ func (cr *clusterRouter) getRepoCharts(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories/charts [get]
+// @Router /Repository/charts [get]
 func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 	r := httputils.NewResponse()
 	var (
@@ -247,7 +247,7 @@ func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	if r.Result, err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repositories().GetRepoChartsByURL(c, repoMeta.Url); err != nil {
+	if r.Result, err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repository().GetRepoChartsByURL(c, repoMeta.Url); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
@@ -259,7 +259,7 @@ func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 //
 // @Summary get chart values
 // @Description retrieves values of a chart in a repository from the system using the provided chart name and version
-// @Tags repositories
+// @Tags Repository
 // @Accept json
 // @Produce json
 // @Param cluster query string true "Kubernetes cluster name"
@@ -269,7 +269,7 @@ func (cr *clusterRouter) getRepoChartsByURL(c *gin.Context) {
 // @Failure 400 {object} httputils.Response
 // @Failure 404 {object} httputils.Response
 // @Failure 500 {object} httputils.Response
-// @Router /repositories/values [get]
+// @Router /Repository/values [get]
 func (cr *clusterRouter) getChartValues(c *gin.Context) {
 
 	r := httputils.NewResponse()
@@ -283,7 +283,7 @@ func (cr *clusterRouter) getChartValues(c *gin.Context) {
 		httputils.SetFailed(c, r, err)
 		return
 	}
-	if r.Result, err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repositories().GetRepoChartValues(c, repoMeta.Chart, repoMeta.Version); err != nil {
+	if r.Result, err = cr.c.Cluster().Helm(pixiuMeta.Cluster).Repository().GetRepoChartValues(c, repoMeta.Chart, repoMeta.Version); err != nil {
 		httputils.SetFailed(c, r, err)
 		return
 	}
