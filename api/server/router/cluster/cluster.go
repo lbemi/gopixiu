@@ -95,6 +95,8 @@ func (cr *clusterRouter) initRoutes(httpEngine *gin.Engine) {
 		helmRoute.GET("/clusters/:cluster/v1/namespaces/:namespace/releases/:name", cr.GetRelease)
 		helmRoute.GET("/clusters/:cluster/v1/namespaces/:namespace/releases", cr.ListReleases)
 
+		helmRoute.POST("/clusters/:cluster/v2/namespaces/:namespace/releases", cr.InstallReleaseV2)
+
 		// helm Repository
 		helmRoute.POST("/clusters/:cluster/repositories", cr.createRepository)
 		helmRoute.PUT("/clusters/:cluster/repositories/:id", cr.updateRepository)
